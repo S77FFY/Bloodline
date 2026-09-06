@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.4">
+<meta name="app-version" content="2.0.5">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -109,13 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.4
+   BLOODLINE  v2.0.5
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.4";
+const VERSION = "2.0.5";
 
 
 /* ---------------- beeper ----------------
@@ -715,7 +715,7 @@ function newState() {
     gen: 1, name: pickName(),
     turn: 0, age: 14, lifespan: 34 + (Math.random() * 9 | 0),
     food: 90, health: 100,
-    pack: [], packMax: 16,
+    pack: [], packMax: 12, stackMax: 9,
     known: {}, seen: {}, painted: {},
     kids: [], mate: false, lastBirth: -50,
     caves: {}, at: 0,
@@ -802,22 +802,27 @@ function makeCave(c) {
     cy = Math.max(1, Math.min(MH - 2, cy + (d === 2 ? 1 : d === 3 ? -1 : 0)));
     if (m[I(cx, cy)] === T.WALL) { m[I(cx, cy)] = T.FLOOR; carved++; }
   }
-  // carve corridors out to each exit
-  Object.keys(c.links).forEach(d => {
+  // carve corridors out to each exit, and remember them so nothing gets built there
+  const guarded = {};
+  const corridor = (d, clear) => {
     const p = EXITPOS[d];
     let x = p[0], y = p[1];
     m[I(x, y)] = T.EXIT;
+    guarded[I(x, y)] = 1;
     while (true) {
       x += (x < 8 ? 1 : x > 8 ? -1 : 0);
       y += (y < 4 ? 1 : y > 4 ? -1 : 0);
-      if (m[I(x, y)] === T.WALL) m[I(x, y)] = T.FLOOR;
+      guarded[I(x, y)] = 1;
+      if (m[I(x, y)] === T.WALL || (clear && m[I(x, y)] === T.WALLART)) m[I(x, y)] = T.FLOOR;
       if (x === 8 && y === 4) break;
     }
-  });
+  };
+  Object.keys(c.links).forEach(d => corridor(d, false));
+  guarded[I(8, 4)] = 1;
   const openList = () => {
     const l = [];
     for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++)
-      if (m[I(x, y)] === T.FLOOR && !ent[I(x, y)]) l.push([x, y]);
+      if (m[I(x, y)] === T.FLOOR && !ent[I(x, y)] && !guarded[I(x, y)]) l.push([x, y]);
     return l;
   };
   const grab = () => { const l = openList(); return l.length ? l[Math.random() * l.length | 0] : null; };
@@ -832,6 +837,10 @@ function makeCave(c) {
   if (c.biome === "deep" && Math.random() < 0.5) node("BEAST", 1);
   if (Math.random() < 0.4) node("MATE", 1);
   if (Math.random() < 0.35) node("BONES", 1);
+
+  // and clear the corridors again in case anything crept in
+  Object.keys(c.links).forEach(d => corridor(d, true));
+  Object.keys(guarded).forEach(k => { if (ent[k]) ent[k] = null; });
 
   c.map = m; c.ent = ent;
   c.hearth = null; c.kiln = null;
@@ -992,13 +1001,27 @@ function noteTaken(ids) {
   return fresh.length ? "NEW WORD: " + fresh.join(" ") : "";
 }
 function has(id, n) { return S.pack.filter(x => x === id).length >= (n || 1); }
+function countOf(id) { return S.pack.filter(x => x === id).length; }
+function kinds() { return new Set(S.pack).size; }
 function consume(id) { const i = S.pack.indexOf(id); if (i >= 0) S.pack.splice(i, 1); }
+/* one slot per kind, nine deep. FULL means the slot is capped;
+   NOROOM means you are carrying too many different things. */
 function give(id, n) {
   n = n || 1;
   let got = 0;
-  for (let i = 0; i < n; i++) { if (S.pack.length < S.packMax) { S.pack.push(id); got++; } }
-  if (S.pack.length >= 8) earn("COUNT");
+  for (let i = 0; i < n; i++) {
+    const have = countOf(id);
+    if (have === 0 && kinds() >= S.packMax) break;
+    if (have >= S.stackMax) break;
+    S.pack.push(id); got++;
+  }
+  if (kinds() >= 8) earn("COUNT");
   return got;
+}
+function giveStatus(id) {
+  if (countOf(id) >= S.stackMax) return "FULL";
+  if (countOf(id) === 0 && kinds() >= S.packMax) return "NOROOM";
+  return "OK";
 }
 
 function move(dx, dy) {
@@ -1063,11 +1086,20 @@ function gather(x, y, e) {
     tick();
   } else {
     const n = 2 + (Math.random() * 2 | 0);
+    const why = giveStatus(k);
+    if (why === "NOROOM") {
+      SFX.block(); say("TOO MANY DIFFERENT THINGS.", "PRESS M, THEN E TO PUT ONE DOWN.");
+      render(); return;
+    }
     const got = give(k, n);
-    if (!got) { SFX.block(); say("YOUR HANDS ARE FULL.", "PRESS M, THEN E TO PUT SOMETHING DOWN."); render(); return; }
-    SFX.take();
-    const note = noteTaken([k]);
-    say("YOU TAKE " + got + " " + k + ".", note);
+    if (!got) {
+      // you already have all you can carry of this — clear it anyway
+      SFX.take(); say("YOU HAVE ALL THE " + k + " YOU CAN CARRY.", "");
+    } else {
+      SFX.take();
+      const note = noteTaken([k]);
+      say("YOU TAKE " + got + " " + k + ".", note);
+    }
     e.ready = S.turn + 55;
     tick();
   }
@@ -1306,7 +1338,7 @@ function drawPlay() {
   const c = cave();
   tc(0, 0, (pad("AGE " + S.age, 8) + pad("FOOD " + Math.max(0, S.food | 0), 9) +
             pad("HURT " + Math.max(0, 100 - S.health), 9) + BIOMENAME[c.biome].substr(0, 6)).substr(0, 32), BWHITE);
-  tc(0, 1, (pad("PACK " + S.pack.length + "/" + S.packMax, 10) + pad("LARDER " + S.larder, 11) +
+  tc(0, 1, (pad("PACK " + kinds() + "/" + S.packMax, 10) + pad("LARDER " + S.larder, 11) +
             pad(paintedCount() + "/" + WORDS.length, 8)).substr(0, 32), CYAN);
   fill(SX, SY + 16, SW, 1, BLUE);
 
