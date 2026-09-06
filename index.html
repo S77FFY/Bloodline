@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="app-repo" content="FirstWords">
-<meta name="app-version" content="2.0.0">
+<meta name="app-repo" content="Bloodline">
+<meta name="app-version" content="2.0.3">
 <meta name="theme-color" content="#000000">
-<title>FIRST WORDS</title>
+<title>BLOODLINE</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -109,12 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   FIRST WORDS  v1.0.0
-   A ZX Spectrum-style caveman roguelike about learning language.
+   BLOODLINE  v2.0.3
+   A ZX Spectrum-style caveman roguelike about learning language
+   and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.0";
+const VERSION = "2.0.3";
 
 
 /* ---------------- beeper ----------------
@@ -218,6 +219,11 @@ function tapeFreq(f) { if (tapeOsc && AC) tapeOsc.frequency.setValueAtTime(f, AC
 function tapeStop() {
   if (tapeOsc) { try { tapeOsc.stop(); } catch (e) {} tapeOsc = null; }
   tapeOn = false;
+}
+function setKeyLabel(which, label) {
+  if (!document.querySelector) return;
+  const b = document.querySelector('button[data-k="' + which + '"] .sub');
+  if (b && b.textContent !== label) b.textContent = label;
 }
 function toggleSound() {
   sound = !sound;
@@ -979,6 +985,14 @@ function newRun() {
 /* ==================================================================
    MOVING AND GATHERING
    ================================================================== */
+/* things you pick up name themselves quietly; only what you MAKE or LIVE
+   is worth stopping the game for */
+function noteTaken(ids) {
+  const fresh = [];
+  ids.forEach(id => { if (WBY[id] && !S.known[id] && discover(id, true)) fresh.push(id); });
+  if (fresh.length) SFX.word();
+  return fresh.length ? "NEW WORD: " + fresh.join(" ") : "";
+}
 function has(id, n) { return S.pack.filter(x => x === id).length >= (n || 1); }
 function consume(id) { const i = S.pack.indexOf(id); if (i >= 0) S.pack.splice(i, 1); }
 function give(id, n) {
@@ -1012,9 +1026,9 @@ function gather(x, y, e) {
   const k = e.kind;
   if (k === "GAME") {
     if (has("BOW") || has("AXE") || has("KNIFE")) {
-      give("MEAT", 2); give("HIDE"); give("BONE"); give("SINEW"); give("FAT");
-      if (Math.random() < 0.4) give("HORN"); else give("FEATHER");
-      SFX.kill(); say("YOU BRING IT DOWN AND STRIP IT.", "");
+      const spoils = ["MEAT", "MEAT", "HIDE", "BONE", "SINEW", "FAT", Math.random() < 0.4 ? "HORN" : "FEATHER"];
+      spoils.forEach(id => give(id));
+      SFX.kill(); say("YOU BRING IT DOWN AND STRIP IT.", noteTaken(spoils));
       e.ready = S.turn + 90;
       tick(3);
     } else {
@@ -1025,8 +1039,9 @@ function gather(x, y, e) {
     }
   } else if (k === "BEAST") {
     if (has("BOW") || has("AXE")) {
-      give("MEAT", 2); give("HIDE"); give("HORN");
-      SFX.kill(); say("YOU DRIVE IT OFF THE LEDGE.", "");
+      const spoils = ["MEAT", "MEAT", "HIDE", "HORN"];
+      spoils.forEach(id => give(id));
+      SFX.kill(); say("YOU DRIVE IT OFF THE LEDGE.", noteTaken(spoils));
       cave().ent[y * MW + x] = null;
       tick(3);
     } else {
@@ -1043,18 +1058,18 @@ function gather(x, y, e) {
     if (!cave().hearth) say("SHE COMES BACK WITH YOU.", "SHE WILL WANT A FIRE.");
     tick(2);
   } else if (k === "BONES") {
-    SFX.bone(); say("OLD BONES. SOMEONE ENDED HERE.", "");
     give("BONE");
+    SFX.bone(); say("OLD BONES. SOMEONE ENDED HERE.", noteTaken(["BONE"]));
     earn("DEATH");
     cave().ent[y * MW + x] = null;
     tick();
   } else {
     const n = 2 + (Math.random() * 2 | 0);
     const got = give(k, n);
-    if (!got) { SFX.block(); say("YOUR HANDS ARE FULL.", ""); render(); return; }
+    if (!got) { SFX.block(); say("YOUR HANDS ARE FULL.", "PRESS M, THEN E TO PUT SOMETHING DOWN."); render(); return; }
     SFX.take();
-    discover(k, false);
-    say("YOU TAKE " + got + " " + k + ".", "");
+    const note = noteTaken([k]);
+    say("YOU TAKE " + got + " " + k + ".", note);
     e.ready = S.turn + 55;
     tick();
   }
@@ -1126,26 +1141,35 @@ function attempt(a, b, va, vb) {
     else give(hit.id);
     const isNew = discover(hit.id);
     SFX.craft();
-    if (!isNew) say("YOU MAKE ANOTHER " + hit.id + ".", "");
+    const used = [];
+    if (!va) used.push(a);
+    if (!vb) used.push(b);
+    if (!isNew) say("YOU MAKE ANOTHER " + hit.id + ".", used.join(" AND ") + " GONE");
     tick(hit.tier + 1);
     mode = "play"; render(); return;
   }
 
   // failure — the cost comes from what you were handling, not what you wanted
+  if (!S.tried) S.tried = {};
+  S.tried[triedKey(st, a, b)] = true;
+  const spent = [];
+  if (!va) spent.push(a);
+  if (!vb) spent.push(b);
+  const gone = spent.length ? spent.join(" AND ") + " GONE" : "NOTHING SPENT";
   const danger = Math.max(WBY[a].danger, WBY[b].danger) + ((st === "fire" || st === "kiln") ? 1 : 0);
-  let line = near ? "IT HISSES AND GOES BLACK." : "IT WILL NOT JOIN.";
-  let line2 = near ? "WRONG PLACE FOR THIS." : "";
+  let line = near ? "IT HISSES AND GOES BLACK. WRONG PLACE." : "IT WILL NOT JOIN.";
+  let line2 = gone;
   if (danger >= 3) {
     SFX.hurt();
     if (Math.random() < 0.3) { rasp(0.5, 0, 60, 900); die("THE MIXTURE TAKES YOUR HANDS AND FACE."); return; }
     hurt(34, "THE BLAST FINISHES YOU.");
-    line = "IT GOES UP IN YOUR FACE."; line2 = "YOU ARE BADLY BURNED.";
+    line = "IT GOES UP IN YOUR FACE. BADLY BURNED.";
   } else if (danger === 2) {
     SFX.hurt(); hurt(20, "IT POISONS YOU THROUGH.");
-    line2 = "IT BURNS WHERE IT TOUCHED YOU.";
+    line = "IT BURNS WHERE IT TOUCHED YOU.";
   } else if (danger === 1) {
     SFX.hurt(); hurt(8);
-    line2 = line2 || "IT CUTS YOU.";
+    line = near ? "WRONG PLACE, AND IT CUTS YOU." : "IT WILL NOT JOIN. IT CUTS YOU.";
   } else SFX.block();
   say(line, line2);
   tick(1);
@@ -1242,6 +1266,7 @@ function rest() {
    ================================================================== */
 let returnMode = "play";
 let revealT0 = 0;
+let revealLock = 0;
 let craft = { a: null, page: 0 };
 let lexFam = 0;
 let wallOpen = null;
@@ -1252,9 +1277,11 @@ function versionStamp(col) {
 }
 
 function render() {
+  setKeyLabel("eat", mode === "craft" ? "DROP" : "EAT");
   if (S && S.reveal && S.reveal.length && mode !== "reveal" && mode !== "death" && mode !== "over") {
     returnMode = mode === "craft" ? "play" : mode;
     mode = "reveal"; revealT0 = 0;
+    revealLock = performance.now() + 1400;
     cv.classList.add("zoom");
     SFX.word();
     drawReveal(0); flush();
@@ -1305,7 +1332,7 @@ function drawPlay() {
 
   fill(SX, SY + 18 + MH * TS, SW, 1, BLUE);
   tc(0, 22, msg[0], BWHITE);
-  tc(0, 23, msg[1], YELLOW);
+  tc(0, 23, msg[1], msg[1].indexOf("NEW WORD") === 0 ? BGREEN : YELLOW);
   versionStamp(WHITE);
 }
 
@@ -1364,9 +1391,16 @@ function drawNode(dx, dy, kind) {
 function craftItems() {
   const st = stationHere();
   const list = [];
-  if (st) list.push({ id: STATION_GIVES[st], virtual: true });
-  S.pack.forEach(id => list.push({ id, virtual: false }));
+  if (st) list.push({ id: STATION_GIVES[st], virtual: true, count: 0 });
+  const order = [], tally = {};
+  S.pack.forEach(id => { if (tally[id] === undefined) { tally[id] = 0; order.push(id); } tally[id]++; });
+  order.forEach(id => list.push({ id, virtual: false, count: tally[id] }));
   return list;
+}
+function triedKey(st, a, b) { return st + "|" + [a, b].sort().join("|"); }
+function wasTried(a, b) {
+  const st = stationHere();
+  return st ? !!(S.tried && S.tried[triedKey(st, a, b)]) : false;
 }
 function craftCell(i) {
   const col = i % 6, row = (i / 6) | 0;
@@ -1386,13 +1420,23 @@ function drawCraft() {
     if (chosen) fill(x - 3, y - 3, 38, 44, BLUE);
     if (cursor && !chosen) { fill(x - 3, y - 3, 38, 1, WHITE); fill(x - 3, y + 40, 38, 1, WHITE);
                              fill(x - 3, y - 3, 1, 44, WHITE); fill(x + 34, y - 3, 1, 44, WHITE); }
+    if (it.virtual) {
+      fill(x - 3, y - 3, 38, 1, BCYAN); fill(x - 3, y + 40, 38, 1, BCYAN);
+      fill(x - 3, y - 3, 1, 44, BCYAN); fill(x + 34, y - 3, 1, 44, BCYAN);
+    }
     drawMark(x + 2, y, w, it.virtual ? BWHITE : FAMS[w.fam].lit, 2);
+    if (it.count > 1) { fill(x + 24, y + 22, 10, 9, BLACK); text(x + 25, y + 23, String(it.count), BCYAN); }
     const nm = it.id.substr(0, 4);
     text(x + 17 - nm.length * 4, y + 33, nm, chosen ? BYELLOW : (it.virtual ? BCYAN : WHITE));
+    // a small cross on anything already tried with the chosen thing, here
+    if (craft.a !== null && !chosen && wasTried(items[craft.a].id, it.id)) {
+      for (let d = 0; d < 8; d++) { px(x + 24 + d, y + d, BRED); px(x + 31 - d, y + d, BRED); }
+    }
   });
   fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
-  centre(SY + 164, craft.a === null ? "PICK ONE THING" : "NOW PICK WHAT GOES WITH IT", BWHITE);
-  centre(SY + 176, "THE PLACE ITSELF COUNTS AS A THING", CYAN);
+  if (!st) centre(SY + 164, "NO PLACE TO WORK - YOU CAN DROP", BRED);
+  else centre(SY + 164, craft.a === null ? "PICK ONE THING   L CLOSES" : "PICK WHAT GOES WITH IT   X = TRIED", BWHITE);
+  centre(SY + 176, "CYAN BOX IS THIS PLACE. E DROPS.", CYAN);
   versionStamp(WHITE);
 }
 
@@ -1446,7 +1490,7 @@ function drawWall() {
     text(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22 + 17, id.substr(0, 4), WHITE);
   });
   fill(SX + 16, SY + 156, SW - 32, 1, MAGENTA);
-  centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT A WORD" : "YOU HAVE NO PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
+  centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT A WORD" : "M PAINTS A WORD - NEEDS PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
   centre(SY + 176, "SPACE TO STEP BACK", CYAN);
   versionStamp(WHITE);
 }
@@ -1555,17 +1599,20 @@ function drawReveal(t) {
   if (shown) text(SX + Math.round((SW - id.length * 16) / 2), SY + 126, id.substr(0, shown), F.lit, undefined, 2);
   if (shown >= id.length) {
     centre(SY + 150, F.name + "   " + knownCount() + "/" + WORDS.length + " KNOWN", CYAN);
-    centre(SY + 164, "UNPAINTED. IT DIES WITH YOU.", WHITE);
-    if (((t / 400) | 0) % 2 === 0)
-      centre(SY + 178, S.reveal.length > 1 ? (S.reveal.length - 1) + " MORE WAITING" : "TAP TO GO ON", BWHITE);
+    centre(SY + 164, "UNPAINTED. PAINT IT ON A WALL", WHITE);
+    centre(SY + 174, "OR IT DIES WITH YOU.", WHITE);
+    if (performance.now() < revealLock) centre(SY + 186, "...", CYAN);
+    else if (((t / 400) | 0) % 2 === 0)
+      centre(SY + 186, S.reveal.length > 1 ? (S.reveal.length - 1) + " MORE WAITING" : "TAP TO GO ON", BWHITE);
   }
   versionStamp(WHITE);
 }
 function dismissReveal() {
+  if (performance.now() < revealLock) return;      // it stays up long enough to read
   SFX.select();
   S.reveal.shift();
   revealT0 = 0;
-  if (S.reveal.length) { SFX.word(); requestAnimationFrame(revealFrame); return; }
+  if (S.reveal.length) { revealLock = performance.now() + 1400; SFX.word(); requestAnimationFrame(revealFrame); return; }
   mode = returnMode;
   if (mode !== "wall") cv.classList.remove("zoom");
   render();
@@ -1680,15 +1727,15 @@ function buildTitle() {
     }
   };
   clearBox(44, 21, 128, 30);
-  stampText(48, 24, "FIRST", 3);
-  clearBox(24, 49, 128, 30);
-  stampText(28, 52, "WORDS", 3);
-  attrBox(0, 2, 32, 4, BYELLOW, BLACK);
-  attrBox(0, 6, 32, 4, BRED, BLACK);
+  stampText(48, 24, "BLOOD", 3);
+  clearBox(76, 49, 104, 30);
+  stampText(80, 52, "LINE", 3);
+  attrBox(0, 2, 32, 4, BRED, BLACK);
+  attrBox(0, 6, 32, 4, BWHITE, BLACK);
 
-  clearBox(46, 89, 166, 26);
-  stampText(52, 92, "A CAVE. NO WORDS.", 1);
-  stampText(60, 104, "LEARN. EAT. BREED.", 1);
+  clearBox(44, 89, 172, 26);
+  stampText(60, 92, "A CAVE. NO WORDS.", 1);
+  stampText(52, 104, "MAKE. PAINT. BREED.", 1);
   attrBox(0, 11, 32, 3, BCYAN, BLACK);
 
   clearBox(36, 166, 168, 24);
@@ -1823,7 +1870,7 @@ function loadFrame(ts) {
     stripes(t, true);
     cls(BLACK);
     tc(0, 0, "LOAD \"\"", BWHITE);
-    tc(0, 2, "PROGRAM: FIRSTWORDS", BWHITE);
+    tc(0, 2, "PROGRAM: BLOODLINE", BWHITE);
   } else if (t < 7000) {
     stripes(t, false);
     const p = (t - 2600) / 4400;
@@ -1877,7 +1924,8 @@ function press(k) {
   if (mode === "death") { SFX.select(); nextLife(); return; }
 
   if (mode === "craft") {
-    if (k === "words" || k === "eat") { SFX.select(); craft.a = null; mode = "play"; render(); return; }
+    if (k === "words") { SFX.select(); craft.a = null; mode = "play"; render(); return; }
+    if (k === "eat") { dropSelected(); return; }
     const n = craftItems().length;
     if (!n) { mode = "play"; render(); return; }
     const cols = 6;
@@ -1926,7 +1974,7 @@ function press(k) {
 
 function openCraft() {
   const st = stationHere();
-  if (!st) { SFX.block(); say("NOTHING HERE TO WORK WITH.", "STAND AT STONE, FIRE OR WATER."); render(); return; }
+  if (!S.pack.length) { SFX.block(); say("YOUR HANDS ARE EMPTY.", st ? "" : "STAND AT STONE, FIRE OR WATER."); render(); return; }
   SFX.select();
   craft.a = null; craft.sel = 0;
   mode = "craft"; render();
@@ -1934,11 +1982,27 @@ function openCraft() {
 function craftPick(i) {
   const items = craftItems();
   if (i < 0 || i >= items.length) return;
+  if (!stationHere()) { SFX.block(); say("NO PLACE TO WORK HERE.", "PRESS E TO DROP SOMETHING."); render(); return; }
   if (craft.a === null) { craft.a = i; SFX.select(); render(); return; }
-  if (craft.a === i) { craft.a = null; SFX.block(); render(); return; }
-  const A = items[craft.a], B = items[i];
+  const A = items[craft.a];
+  if (craft.a === i) {
+    if (A.count >= 2) { craft.a = null; attempt(A.id, A.id, false, false); return; }
+    craft.a = null; SFX.block(); render(); return;
+  }
+  const B = items[i];
   craft.a = null;
   attempt(A.id, B.id, A.virtual, B.virtual);
+}
+function dropSelected() {
+  const items = craftItems();
+  const it = items[craft.sel];
+  if (!it || it.virtual) { SFX.block(); return; }
+  consume(it.id);
+  craft.a = null;
+  craft.sel = Math.min(craft.sel, Math.max(0, craftItems().length - 1));
+  SFX.block(); say("YOU PUT THE " + it.id + " DOWN.", "");
+  if (!S.pack.length) { mode = "play"; }
+  render();
 }
 function closeWall() {
   wallOpen = null;
