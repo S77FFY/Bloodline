@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.3">
+<meta name="app-version" content="2.0.4">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -109,13 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.3
+   BLOODLINE  v2.0.4
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.3";
+const VERSION = "2.0.4";
 
 
 /* ---------------- beeper ----------------
@@ -985,12 +985,10 @@ function newRun() {
 /* ==================================================================
    MOVING AND GATHERING
    ================================================================== */
-/* things you pick up name themselves quietly; only what you MAKE or LIVE
-   is worth stopping the game for */
+/* every new word gets the screen, however you came by it */
 function noteTaken(ids) {
   const fresh = [];
-  ids.forEach(id => { if (WBY[id] && !S.known[id] && discover(id, true)) fresh.push(id); });
-  if (fresh.length) SFX.word();
+  ids.forEach(id => { if (WBY[id] && !S.known[id] && discover(id)) fresh.push(id); });
   return fresh.length ? "NEW WORD: " + fresh.join(" ") : "";
 }
 function has(id, n) { return S.pack.filter(x => x === id).length >= (n || 1); }
@@ -1392,9 +1390,11 @@ function craftItems() {
   const st = stationHere();
   const list = [];
   if (st) list.push({ id: STATION_GIVES[st], virtual: true, count: 0 });
-  const order = [], tally = {};
-  S.pack.forEach(id => { if (tally[id] === undefined) { tally[id] = 0; order.push(id); } tally[id]++; });
-  order.forEach(id => list.push({ id, virtual: false, count: tally[id] }));
+  const tally = {};
+  S.pack.forEach(id => { tally[id] = (tally[id] || 0) + 1; });
+  Object.keys(tally)
+    .sort((x, y) => (WBY[x] ? WBY[x].n : 999) - (WBY[y] ? WBY[y].n : 999))
+    .forEach(id => list.push({ id, virtual: false, count: tally[id] }));
   return list;
 }
 function triedKey(st, a, b) { return st + "|" + [a, b].sort().join("|"); }
@@ -1924,7 +1924,7 @@ function press(k) {
   if (mode === "death") { SFX.select(); nextLife(); return; }
 
   if (mode === "craft") {
-    if (k === "words") { SFX.select(); craft.a = null; mode = "play"; render(); return; }
+    if (k === "words" || k === "map") { SFX.select(); craft.a = null; mode = "play"; render(); return; }
     if (k === "eat") { dropSelected(); return; }
     const n = craftItems().length;
     if (!n) { mode = "play"; render(); return; }
@@ -1949,6 +1949,7 @@ function press(k) {
     if (k === "up") { paintPick = (paintPick + list.length - 1) % list.length; SFX.step(); render(); return; }
     if (k === "down") { paintPick = (paintPick + 1) % list.length; SFX.step(); render(); return; }
     if (k === "wait" || k === "make") { doPaint(list[paintPick]); return; }
+    if (k === "map") { SFX.select(); closeWall(); return; }
     SFX.select(); mode = "wall"; render(); return;
   }
   if (mode === "lex") {
@@ -1999,7 +2000,11 @@ function dropSelected() {
   if (!it || it.virtual) { SFX.block(); return; }
   consume(it.id);
   craft.a = null;
-  craft.sel = Math.min(craft.sel, Math.max(0, craftItems().length - 1));
+  // stay on the same thing if any is left, otherwise step back a slot
+  const after = craftItems();
+  let idx = after.findIndex(x => x.id === it.id && !x.virtual);
+  if (idx < 0) idx = Math.max(0, craft.sel - 1);
+  craft.sel = Math.min(idx, Math.max(0, after.length - 1));
   SFX.block(); say("YOU PUT THE " + it.id + " DOWN.", "");
   if (!S.pack.length) { mode = "play"; }
   render();
