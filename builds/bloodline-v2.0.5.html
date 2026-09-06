@@ -1,0 +1,2148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="app-repo" content="Bloodline">
+<meta name="app-version" content="2.0.5">
+<meta name="theme-color" content="#000000">
+<title>BLOODLINE</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; background: #000; color: #d7d7d7;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    overscroll-behavior: none; touch-action: manipulation;
+    height: 100%;
+  }
+  #wrap {
+    max-width: 520px; margin: 0 auto; padding: 0 0 env(safe-area-inset-bottom);
+    display: flex; flex-direction: column; height: 100%;
+  }
+  #screen {
+    display: block; width: 100%; height: auto;
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    background: #000;
+  }
+  #screen.zoom {
+    position: fixed; inset: 0; width: 100vw; height: 100vh;
+    object-fit: contain; z-index: 50; background: #000;
+  }
+  /* the case */
+  #pad {
+    display: flex; gap: 12px; padding: 16px 12px 26px;
+    flex: 0 0 auto; position: relative;
+    background: #111113;
+    border-top: 1px solid #2a2a2e;
+    box-shadow: inset 0 12px 22px -14px #000;
+  }
+  #dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; flex: 1 1 58%; }
+  #side { display: grid; grid-template-rows: repeat(5, 1fr); gap: 5px; flex: 1 1 42%; }
+
+  /* the rubber keys */
+  button {
+    font: inherit;
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1px;
+    min-height: 42px; padding: 4px 2px 3px;
+    background: linear-gradient(#68787a 0%, #56676a 48%, #3d4c50 100%);
+    color: #f2f2f2;
+    border: 1px solid #05070a;
+    border-radius: 5px;
+    box-shadow: 0 3px 0 #05070a, 0 4px 5px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.22);
+    cursor: pointer; user-select: none;
+    transition: transform .04s linear, box-shadow .04s linear;
+  }
+  button:active {
+    transform: translateY(3px);
+    background: linear-gradient(#3d4c50 0%, #56676a 60%, #68787a 100%);
+    box-shadow: 0 0 0 #05070a, inset 0 2px 5px rgba(0,0,0,.65);
+  }
+  button:focus-visible { outline: 2px solid #00d7d7; outline-offset: 3px; }
+  .top { font-size: 8px; line-height: 1; color: #2fd44b; letter-spacing: .5px; }
+  .main { font-size: 17px; line-height: 1.05; font-weight: 700; color: #fff; }
+  .main.word { font-size: 13px; letter-spacing: 2px; }
+  .sub { font-size: 9px; line-height: 1; color: #ff4d4d; letter-spacing: .6px; }
+  .num { position: absolute; top: 3px; left: 5px; font-size: 9px; color: #ff4d4d; }
+
+  /* the Sinclair flash */
+  #flash {
+    position: absolute; right: 12px; bottom: 7px;
+    width: 62px; height: 12px; transform: skewX(-24deg);
+    background: linear-gradient(90deg, #d70000 0 25%, #d7d700 25% 50%, #00d700 50% 75%, #00d7d7 75% 100%);
+  }
+  #badge {
+    position: absolute; left: 14px; bottom: 8px;
+    font-size: 9px; letter-spacing: 2px; color: #6a6a70;
+  }
+  .blank { visibility: hidden; box-shadow: none; }
+  @media (prefers-reduced-motion: reduce) { #screen { transition: none; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="screen" width="320" height="240" aria-label="Game screen"></canvas>
+  <div id="pad">
+    <div id="dpad">
+      <button class="blank" tabindex="-1" aria-hidden="true"></button>
+      <button data-k="up" aria-label="Move up"><span class="num">7</span><span class="top">WHITE</span><span class="main">&#9650;</span><span class="sub">UP</span></button>
+      <button class="blank" tabindex="-1" aria-hidden="true"></button>
+      <button data-k="left" aria-label="Move left"><span class="num">5</span><span class="top">CYAN</span><span class="main">&#9664;</span><span class="sub">LEFT</span></button>
+      <button data-k="wait" aria-label="Wait a turn"><span class="top">BREAK</span><span class="main word">SPACE</span><span class="sub">WAIT</span></button>
+      <button data-k="right" aria-label="Move right"><span class="num">8</span><span class="top">BLACK</span><span class="main">&#9654;</span><span class="sub">RIGHT</span></button>
+      <button class="blank" tabindex="-1" aria-hidden="true"></button>
+      <button data-k="down" aria-label="Move down"><span class="num">6</span><span class="top">YELLOW</span><span class="main">&#9660;</span><span class="sub">DOWN</span></button>
+      <button class="blank" tabindex="-1" aria-hidden="true"></button>
+    </div>
+    <div id="side">
+      <button data-k="eat"><span class="top">INT</span><span class="main">E</span><span class="sub">EAT</span></button>
+      <button data-k="make"><span class="top">PI</span><span class="main">M</span><span class="sub">MAKE</span></button>
+      <button data-k="words"><span class="top">USR</span><span class="main">L</span><span class="sub">WORDS</span></button>
+      <button data-k="map"><span class="top">IN KEY</span><span class="main">N</span><span class="sub">MAP</span></button>
+      <button data-k="sound"><span class="top">BIN</span><span class="main">B</span><span class="sub" id="sndlabel">BEEP ON</span></button>
+    </div>
+    <div id="badge">THE SPECTRUM</div>
+    <div id="flash"></div>
+  </div>
+</div>
+<script>
+"use strict";
+/* ------------------------------------------------------------------
+   BLOODLINE  v2.0.5
+   A ZX Spectrum-style caveman roguelike about learning language
+   and keeping a line of blood going long enough to write it down.
+   Single file, zero dependencies.
+------------------------------------------------------------------ */
+
+const VERSION = "2.0.5";
+
+
+/* ---------------- beeper ----------------
+   The Spectrum had one bit of sound: a square wave the CPU toggled by hand.
+   Everything below is square waves and nothing else. */
+let AC = null, MASTER = null, sound = true;
+let tapeOsc = null, tapeOn = false;
+
+function audioInit() {
+  if (AC) return;
+  const Ctx = (typeof window !== "undefined") && (window.AudioContext || window.webkitAudioContext);
+  if (!Ctx) return;
+  try {
+    AC = new Ctx();
+    MASTER = AC.createGain();
+    MASTER.gain.value = 0.15;
+    MASTER.connect(AC.destination);
+  } catch (e) { AC = null; }
+}
+function beep(f, dur, delay, vol) {
+  if (!AC || !sound) return;
+  const t = AC.currentTime + (delay || 0);
+  const v = vol === undefined ? 1 : vol;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = "square";
+  o.frequency.setValueAtTime(f, t);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(v, t + 0.002);
+  g.gain.setValueAtTime(v, t + Math.max(0.005, dur - 0.003));
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g); g.connect(MASTER);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function slide(f1, f2, dur, delay, vol) {
+  if (!AC || !sound) return;
+  const t = AC.currentTime + (delay || 0);
+  const v = vol === undefined ? 0.9 : vol;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = "square";
+  o.frequency.setValueAtTime(f1, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur);
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(v, t + 0.004);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g); g.connect(MASTER);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+/* random square jumps - how the Spectrum did explosions and tape data */
+function rasp(dur, delay, lo, hi, vol) {
+  if (!AC || !sound) return;
+  const t = AC.currentTime + (delay || 0);
+  const v = vol === undefined ? 0.8 : vol;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = "square";
+  const steps = Math.max(2, Math.floor(dur / 0.011));
+  for (let i = 0; i < steps; i++) o.frequency.setValueAtTime(lo + Math.random() * (hi - lo), t + i * 0.011);
+  g.gain.setValueAtTime(v, t);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g); g.connect(MASTER);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+const SFX = {
+  step:   () => beep(1600, 0.011, 0, 0.45),
+  block:  () => { beep(120, 0.07, 0, 0.8); beep(85, 0.09, 0.07, 0.8); },
+  take:   () => { beep(880, 0.028, 0, 0.7); beep(1320, 0.038, 0.028, 0.7); },
+  eat:    () => { beep(660, 0.04, 0, 0.7); beep(494, 0.055, 0.04, 0.7); },
+  drink:  () => slide(420, 1100, 0.13),
+  bone:   () => slide(320, 80, 0.32, 0, 0.7),
+  flee:   () => slide(300, 1400, 0.14, 0, 0.7),
+  hurt:   () => { rasp(0.24, 0, 90, 340); beep(70, 0.22, 0, 0.6); },
+  kill:   () => { rasp(0.11, 0, 220, 950); slide(700, 110, 0.24, 0.1); },
+  fire:   () => { slide(180, 1500, 0.3); rasp(0.18, 0.28, 400, 1600, 0.5); },
+  craft:  () => { beep(300, 0.05, 0, 0.8); beep(300, 0.05, 0.08, 0.8); beep(1046, 0.1, 0.17, 0.8); },
+  wall:   () => slide(1500, 280, 0.24),
+  word:   () => { [523, 659, 784, 1046].forEach((f, i) => beep(f, 0.07, i * 0.07, 0.9));
+                  beep(1046, 0.26, 0.30, 0.9); beep(1568, 0.26, 0.30, 0.45); },
+  meet:   () => { [660, 880, 1046, 1318].forEach((f, i) => beep(f, 0.08, i * 0.08, 0.8)); },
+  birth:  () => { [700, 900, 1100, 1400, 1760].forEach((f, i) => beep(f, 0.05, i * 0.05, 0.8)); },
+  loss:   () => slide(300, 60, 0.7, 0, 0.7),
+  death:  () => { slide(440, 55, 1.1); beep(70, 0.35, 1.1, 0.7); beep(55, 0.5, 1.45, 0.7); },
+  down:   () => { slide(340, 110, 0.55); rasp(0.2, 0.4, 60, 200, 0.5); },
+  select: () => { beep(1200, 0.02, 0, 0.6); beep(1800, 0.03, 0.02, 0.6); },
+  fanfare:() => { [523, 784, 1046, 784, 1318].forEach((f, i) => beep(f, 0.09, i * 0.09, 0.9));
+                  beep(2093, 0.3, 0.45, 0.8); beep(1568, 0.3, 0.45, 0.4); }
+};
+
+/* tape: 807Hz pilot tone, then the rasp of data */
+function tapeStart() {
+  if (!AC || !sound || tapeOn) return;
+  tapeOsc = AC.createOscillator();
+  const g = AC.createGain();
+  g.gain.value = 0.55;
+  tapeOsc.type = "square";
+  tapeOsc.frequency.value = 807;
+  tapeOsc.connect(g); g.connect(MASTER);
+  tapeOsc.start();
+  tapeOn = true;
+}
+function tapeFreq(f) { if (tapeOsc && AC) tapeOsc.frequency.setValueAtTime(f, AC.currentTime); }
+function tapeStop() {
+  if (tapeOsc) { try { tapeOsc.stop(); } catch (e) {} tapeOsc = null; }
+  tapeOn = false;
+}
+function setKeyLabel(which, label) {
+  if (!document.querySelector) return;
+  const b = document.querySelector('button[data-k="' + which + '"] .sub');
+  if (b && b.textContent !== label) b.textContent = label;
+}
+function toggleSound() {
+  sound = !sound;
+  const b = document.getElementById("sndlabel");
+  if (b) b.textContent = sound ? "BEEP ON" : "BEEP OFF";
+  if (!sound) tapeStop(); else { audioInit(); SFX.select(); }
+}
+
+/* ---------------- Spectrum display model ---------------- */
+const W = 320, H = 240;          // full display incl. border
+const SX = 32, SY = 24;          // screen origin inside border
+const SW = 256, SH = 192;        // screen area
+
+const PAL = [
+  0x000000, 0x0000d7, 0xd70000, 0xd700d7, 0x00d700, 0x00d7d7, 0xd7d700, 0xd7d7d7,
+  0x000000, 0x0000ff, 0xff0000, 0xff00ff, 0x00ff00, 0x00ffff, 0xffff00, 0xffffff
+];
+const BLACK=0, BLUE=1, RED=2, MAGENTA=3, GREEN=4, CYAN=5, YELLOW=6, WHITE=7;
+const BBLUE=9, BRED=10, BMAG=11, BGREEN=12, BCYAN=13, BYELLOW=14, BWHITE=15;
+
+const cv = document.getElementById("screen");
+const ctx = cv.getContext("2d", { alpha: false });
+const img = ctx.createImageData(W, H);
+const buf = new Uint32Array(img.data.buffer);
+const RGBA = PAL.map(c => (255 << 24) | ((c & 0xff) << 16) | ((c >> 8 & 0xff) << 8) | (c >> 16 & 0xff));
+
+function px(x, y, c) {
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  buf[y * W + x] = RGBA[c];
+}
+function fill(x, y, w, h, c) {
+  const col = RGBA[c];
+  for (let j = y; j < y + h; j++) {
+    if (j < 0 || j >= H) continue;
+    const row = j * W;
+    for (let i = x; i < x + w; i++) { if (i >= 0 && i < W) buf[row + i] = col; }
+  }
+}
+function border(c) { fill(0, 0, W, H, c); }
+function cls(c) { fill(SX, SY, SW, SH, c); }
+function flush() { ctx.putImageData(img, 0, 0); }
+
+/* ---------------- 8x8 font ---------------- */
+const FONT = {
+  " ": "0000000000000000", "A": "003C42427E424200", "B": "007C427C42427C00", "C": "003C424040423C00",
+  "D": "0078444242447800", "E": "007E407C40407E00", "F": "007E407C40404000", "G": "003C42404E423C00",
+  "H": "0042427E42424200", "I": "003E080808083E00", "J": "0002020202423C00", "K": "0044487048444200",
+  "L": "0040404040407E00", "M": "0042665A42424200", "N": "0042625A4A464200", "O": "003C424242423C00",
+  "P": "007C42427C404000", "Q": "003C4242524A3C00", "R": "007C42427C444200", "S": "003C403C02423C00",
+  "T": "00FE101010101000", "U": "0042424242423C00", "V": "0042424242241800", "W": "00424242425A2400",
+  "X": "0042241818244200", "Y": "0082442810101000", "Z": "007E040810207E00",
+  "0": "003C464A52623C00", "1": "0018280808083E00", "2": "003C42023C407E00", "3": "003C420C02423C00",
+  "4": "00081828487E0800", "5": "007E407C02423C00", "6": "003C407C42423C00", "7": "007E020408101000",
+  "8": "003C423C42423C00", "9": "003C42423E023C00",
+  ".": "0000000000181800", ",": "0000000000181810", "!": "0010101010001000", "?": "003C420408001000",
+  "'": "0008101000000000", ":": "0000101000101000", "-": "0000003C00000000", "/": "0000020408102000",
+  "(": "0004081010080400", ")": "0020100808102000", "+": "0000081C08000000", "=": "00003C003C000000",
+  "*": "0000241824180000", "%": "0062640810264600", "<": "0004081008040000", ">": "0020100810200000",
+  "[": "001C1010101C0000", "]": "0038080808380000", "#": "00247E247E240000", "\"": "0024240000000000",
+  "a": "0000380C3C443C00", "b": "0040407844447800", "c": "0000384440443800", "d": "0004043C44443C00",
+  "e": "0000384478403C00", "f": "000C103810101000", "g": "00003C44443C0438", "h": "0040407844444400",
+  "i": "0010003010103800", "j": "0004000404042418", "k": "0020242830282400", "l": "0010101010100C00",
+  "m": "0000685454545400", "n": "0000784444444400", "o": "0000384444443800", "p": "0000784444784040",
+  "q": "00003C44443C0406", "r": "00001C2020202000", "s": "0000384038047800", "t": "0010381010100C00",
+  "u": "0000444444443800", "v": "0000444428281000", "w": "0000445454542800", "x": "0000442810284400",
+  "y": "00004444443C0438", "z": "00007C0810207C00", "\u00a9": "003C4A56524A3C00"
+};
+const FONTBYTES = {};
+for (const k in FONT) {
+  const a = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) a[i] = parseInt(FONT[k].substr(i * 2, 2), 16);
+  FONTBYTES[k] = a;
+}
+function drawChar(x, y, ch, ink, paper, scale) {
+  scale = scale || 1;
+  const g = FONTBYTES[ch] || FONTBYTES["?"];
+  for (let r = 0; r < 8; r++) {
+    const bits = g[r];
+    for (let c = 0; c < 8; c++) {
+      const on = (bits >> (7 - c)) & 1;
+      const col = on ? ink : paper;
+      if (col < 0) continue;
+      if (scale === 1) px(x + c, y + r, col);
+      else fill(x + c * scale, y + r * scale, scale, scale, col);
+    }
+  }
+}
+function text(x, y, s, ink, paper, scale) {
+  scale = scale || 1;
+  s = String(s).toUpperCase();
+  for (let i = 0; i < s.length; i++) drawChar(x + i * 8 * scale, y, s[i], ink, paper === undefined ? -1 : paper, scale);
+}
+function rawText(x, y, s, ink, paper, scale) {
+  scale = scale || 1;
+  s = String(s);
+  for (let i = 0; i < s.length; i++) drawChar(x + i * 8 * scale, y, s[i], ink, paper === undefined ? -1 : paper, scale);
+}
+function rawCentre(y, s, ink, paper, scale) {
+  scale = scale || 1;
+  rawText(SX + Math.round((SW - s.length * 8 * scale) / 2), y, s, ink, paper, scale);
+}
+function centre(y, s, ink, paper, scale) {
+  scale = scale || 1;
+  const w = s.length * 8 * scale;
+  text(SX + Math.round((SW - w) / 2), y, s, ink, paper, scale);
+}
+/* text at character row/col within the screen area */
+function tc(col, row, s, ink, paper) { text(SX + col * 8, SY + row * 8, s, ink, paper); }
+
+/* ---------------- sprites ---------------- */
+/* '#' = ink, 'o' = alt ink, '.' = transparent (or paper if given) */
+const SPR = {
+man: [
+"................","......####......","....########....","....##.##.##....",
+"....########....","....########....",".....######.....","....########....",
+"...##########...","..###.####.###..","..##..####..##..",".....######.....",
+".....##..##.....",".....##..##.....","....###..###....","................"],
+woman: [
+"................",".....######.....","....########....","...###.##.###...",
+"...##########...","...##########...","...##.####.##...","....########....",
+"...##########...","..####.##.####..",".....######.....","....########....",
+".....##..##.....",".....##..##.....","....###..###....","................"],
+child: [
+"................","................","................","......####......",
+".....######.....",".....##.###.....",".....######.....","......####......",
+"....########....","...###.##.###...","......####......","......##.##.....",
+"......##.##.....",".....###.###....","................","................"],
+bush: [
+"................","................",".....#....#.....","....###..###....",
+"...###o####o##..","..#####o######..",".#o###########..",".##########o##..",
+"..####o######...","...##########...","....########....","......####......",
+".......##.......",".......##.......","......####......","................"],
+tree: [
+"................",".....######.....","...##########...","..####o####o##..",
+".##############.",".###o######o###.",".##############.","..####o#####o#..",
+"...##########...",".....######.....",".......##.......",".......##.......",
+".......##.......","......####......",".....######.....","................"],
+mush: [
+"................","................",".....######.....","...##oo##oo###..",
+"..############..",".##oo######oo##.",".##############.","..############..",
+"....########....","......####......","......####......","......####......",
+"......####......",".....######.....","....########....","................"],
+deer: [
+"................",".............##.","............####","...........##.##",
+"..############..",".##############.",".##############.",".##############.",
+"..############..","..##..####..##..","..##..####..##..","..##..####..##..",
+"..##..####..##..","..##..####..##..","..#....##....#..","................"],
+fire: [
+"................",".......#........","......###.......","......#o#.......",
+".....##o##......",".....#ooo#......","....##ooo##.....","...##ooooo##....",
+"...##ooooo##....","..###ooooo###...","..###ooooo###...","..############..",
+".####..##..####.","..##########....","...########.....","................"],
+boulder: [
+"................","................",".....######.....","...##########...",
+"..############..",".##############.",".##############.","################",
+"################",".##############.",".##############.","..############..",
+"....########....","................","................","................"],
+bones: [
+"................","................",".....######.....","....########....",
+"...##########...","...##.####.##...","...##.####.##...","...##########...",
+"....########....",".....##..##.....",".....######.....","................",
+"..############..","................","..##..####..##..","................"],
+stone: [
+"................","................","................","................",
+"................","......####......",".....######.....","....########....",
+"....########....",".....######.....","......####......","................",
+"................","................","................","................"],
+stick: [
+"................","................",".............##.","............##..",
+"...........##...","..........##....","........###.....",".......##.##....",
+"......##...##...",".....##.........","....##..........","...##...........",
+"..##............",".##.............","................","................"],
+beast: [
+"................","..##........##..",".####......####.",".##############.",
+"##############..","################","##.##########.##","##.##########.##",
+"################","#####.####.#####","################","..############..",
+"..##..####..##..","..##..####..##..",".###..####..###.","................"],
+exit: [
+"################","#####......#####","####........####","###..........###",
+"##............##","##............##","##............##","##............##",
+"##............##","##............##","##............##","##............##",
+"##............##","##............##","##............##","################"]
+};
+function sprite(x, y, name, ink, alt, paper) {
+  const s = SPR[name]; if (!s) return;
+  for (let r = 0; r < s.length; r++) {
+    const row = s[r];
+    for (let c = 0; c < row.length; c++) {
+      const ch = row[c];
+      if (ch === "#") px(x + c, y + r, ink);
+      else if (ch === "o") px(x + c, y + r, alt === undefined ? ink : alt);
+      else if (paper !== undefined && paper >= 0) px(x + c, y + r, paper);
+    }
+  }
+}
+
+/* ==================================================================
+   THE LEXICON — 144 words in six families
+   ================================================================== */
+const FAMS = {
+  grow:  { name: "GROWING", ink: GREEN,   lit: BGREEN },
+  beast: { name: "ANIMAL",  ink: YELLOW,  lit: BYELLOW },
+  earth: { name: "EARTH",   ink: WHITE,   lit: BWHITE },
+  flame: { name: "FIRE",    ink: RED,     lit: BRED },
+  flow:  { name: "WATER",   ink: CYAN,    lit: BCYAN },
+  mind:  { name: "MIND",    ink: MAGENTA, lit: BMAG }
+};
+const FAMORDER = ["grow", "beast", "earth", "flame", "flow", "mind"];
+
+const WORDS = [];
+const WBY = {};
+function found(id, fam, where, danger) { add({ id, fam, tier: 0, where, danger: danger || 0 }); }
+function made(id, fam, tier, a, b, st, danger) { add({ id, fam, tier, a, b, st, danger: danger || 0 }); }
+function mind(id, how) { add({ id, fam: "mind", tier: 0, mind: true, how, danger: 0 }); }
+function add(w) { w.n = WORDS.length; WORDS.push(w); WBY[w.id] = w; }
+
+/* --- growing (24) --- */
+found("WOOD", "grow", "mouth");   found("BARK", "grow", "mouth");
+found("REED", "grow", "wet");     found("MOSS", "grow", "wet");
+found("ROOT", "grow", "dry");     found("GOURD", "grow", "dry");
+found("RESIN", "grow", "mouth");  found("BERRY", "grow", "mouth");
+made("FIBRE", "grow", 1, "BARK", "STONE", "stone");
+made("CORD", "grow", 1, "FIBRE", "FIBRE", "stone");
+made("ROPE", "grow", 2, "CORD", "CORD", "stone");
+made("NET", "grow", 2, "CORD", "REED", "stone");
+made("BASKET", "grow", 2, "REED", "WATER", "water");
+made("SHAFT", "grow", 2, "WOOD", "BLADE", "stone");
+made("PLANK", "grow", 2, "WOOD", "WEDGE", "stone");
+made("RAFT", "grow", 3, "PLANK", "ROPE", "water");
+made("SEED", "grow", 1, "GOURD", "STONE", "stone");
+made("FLOUR", "grow", 2, "SEED", "STONE", "stone");
+made("BREAD", "grow", 2, "FLOUR", "FIRE", "fire");
+made("GUM", "grow", 2, "RESIN", "WATER", "fire");
+made("DYE", "grow", 2, "BERRY", "WATER", "water");
+made("POISON", "grow", 3, "ROOT", "WATER", "fire", 2);
+made("HERB", "grow", 2, "MOSS", "WATER", "water");
+made("MEDICINE", "grow", 4, "HERB", "BROTH", "fire");
+
+/* --- animal (24) --- */
+found("BONE", "beast", "hunt");   found("HIDE", "beast", "hunt");
+found("SINEW", "beast", "hunt");  found("FAT", "beast", "hunt");
+found("HORN", "beast", "hunt");   found("FEATHER", "beast", "hunt");
+found("EGG", "beast", "chalk");   found("MEAT", "beast", "hunt");
+made("NEEDLE", "beast", 2, "BONE", "BLADE", "stone");
+made("THREAD", "beast", 2, "SINEW", "BLADE", "stone");
+made("LEATHER", "beast", 2, "HIDE", "WATER", "water");
+made("POUCH", "beast", 3, "LEATHER", "THREAD", "stone");
+made("CLOAK", "beast", 3, "LEATHER", "LEATHER", "stone");
+made("BOOT", "beast", 3, "LEATHER", "CORD", "stone");
+made("DRUM", "beast", 3, "HIDE", "SHAFT", "stone");
+made("GLUE", "beast", 2, "HIDE", "WATER", "fire");
+made("TALLOW", "beast", 2, "FAT", "FIRE", "fire");
+made("CANDLE", "beast", 3, "TALLOW", "CORD", "fire");
+made("SOAP", "beast", 3, "TALLOW", "ASH", "fire");
+made("BROTH", "beast", 2, "BONE", "WATER", "fire");
+made("HOOK", "beast", 2, "HORN", "BLADE", "stone");
+made("FLASK", "beast", 3, "HORN", "GUM", "stone");
+made("BOW", "beast", 3, "SHAFT", "THREAD", "stone");
+made("ARROW", "beast", 3, "SHAFT", "FEATHER", "stone");
+
+/* --- earth (24) --- */
+found("STONE", "earth", "any");   found("FLINT", "earth", "dry");
+found("CLAY", "earth", "wet");    found("CHALK", "earth", "chalk");
+found("OCHRE", "earth", "chalk"); found("SAND", "earth", "chalk");
+found("SHELL", "earth", "chalk"); found("OBSIDIAN", "earth", "deep", 1);
+made("BLADE", "earth", 1, "FLINT", "STONE", "stone");
+made("WEDGE", "earth", 1, "STONE", "STONE", "stone");
+made("AXE", "earth", 2, "BLADE", "SHAFT", "stone");
+made("PICK", "earth", 2, "WEDGE", "SHAFT", "stone");
+made("HAMMER", "earth", 2, "STONE", "SHAFT", "stone");
+made("KNIFE", "earth", 3, "OBSIDIAN", "STONE", "stone", 1);
+made("PIGMENT", "earth", 2, "OCHRE", "FAT", "stone");
+made("LIME", "earth", 4, "CHALK", "FIRE", "kiln", 2);
+made("MORTAR", "earth", 4, "LIME", "WATER", "stone", 2);
+made("POT", "earth", 3, "CLAY", "WATER", "water");
+made("BRICK", "earth", 4, "CLAY", "FIRE", "kiln");
+made("KILN", "earth", 3, "CLAY", "FIRE", "fire");
+made("LAMP", "earth", 4, "POT", "TALLOW", "fire");
+made("BEAD", "earth", 2, "SHELL", "BLADE", "stone");
+made("GLASS", "earth", 5, "SAND", "FIRE", "kiln", 1);
+made("MIRROR", "earth", 5, "GLASS", "PIGMENT", "stone", 1);
+
+/* --- fire (24) --- */
+found("SULPHUR", "flame", "deep", 3);  found("ORE", "flame", "deep");
+made("SPARK", "flame", 1, "FLINT", "FLINT", "stone");
+made("FIRE", "flame", 1, "SPARK", "WOOD", "stone");
+made("ASH", "flame", 1, "WOOD", "FIRE", "fire");
+made("EMBER", "flame", 2, "FIRE", "ASH", "fire");
+made("CHARCOAL", "flame", 2, "WOOD", "ASH", "fire");
+made("SMOKE", "flame", 2, "MOSS", "FIRE", "fire");
+made("SOOT", "flame", 3, "SMOKE", "STONE", "fire");
+made("INK", "flame", 4, "SOOT", "GUM", "stone");
+made("PITCH", "flame", 3, "RESIN", "CHARCOAL", "fire", 1);
+made("TAR", "flame", 4, "PITCH", "WATER", "fire", 2);
+made("TORCH", "flame", 3, "SHAFT", "PITCH", "fire", 1);
+made("BEACON", "flame", 4, "TORCH", "FIRE", "fire", 1);
+made("FORGE", "flame", 5, "KILN", "CHARCOAL", "kiln", 2);
+made("COPPER", "flame", 5, "ORE", "CHARCOAL", "kiln", 2);
+made("TIN", "flame", 5, "ORE", "ASH", "kiln", 2);
+made("BRONZE", "flame", 5, "COPPER", "TIN", "kiln", 2);
+made("CHISEL", "flame", 6, "BRONZE", "HAMMER", "kiln", 2);
+made("SALTPETRE", "flame", 5, "ASH", "SALT", "water", 2);
+made("POWDER", "flame", 6, "SALTPETRE", "SULPHUR", "stone", 3);
+made("FUSE", "flame", 6, "CORD", "POWDER", "stone", 3);
+made("BOMB", "flame", 6, "POWDER", "FLASK", "stone", 3);
+made("QUICKFIRE", "flame", 6, "PITCH", "SULPHUR", "fire", 3);
+
+/* --- water (24) --- */
+found("WATER", "flow", "wet");  found("ICE", "flow", "deep");
+found("SALT", "flow", "chalk"); found("SNOW", "flow", "deep");
+made("STEAM", "flow", 1, "WATER", "FIRE", "fire");
+made("BRINE", "flow", 2, "SALT", "WATER", "water");
+made("FROST", "flow", 2, "WATER", "ICE", "water");
+made("BUCKET", "flow", 3, "PLANK", "CORD", "stone");
+made("WELL", "flow", 4, "PICK", "WATER", "stone");
+made("CHANNEL", "flow", 4, "PICK", "CLAY", "stone");
+made("DAM", "flow", 4, "PLANK", "CLAY", "water");
+made("LADLE", "flow", 3, "HORN", "SHAFT", "stone");
+made("OIL", "flow", 3, "SEED", "HAMMER", "stone");
+made("VINEGAR", "flow", 3, "BERRY", "WATER", "fire");
+made("BEER", "flow", 3, "FLOUR", "WATER", "water");
+made("MEAD", "flow", 4, "BERRY", "BEER", "water");
+made("SALTFISH", "flow", 3, "MEAT", "BRINE", "water");
+made("STOCK", "flow", 3, "BROTH", "SALT", "fire");
+made("SOUP", "flow", 4, "STOCK", "HERB", "fire");
+made("GLAZE", "flow", 5, "SAND", "BRINE", "kiln", 1);
+made("FLOAT", "flow", 2, "GOURD", "CORD", "water");
+made("LYE", "flow", 3, "ASH", "WATER", "water", 1);
+made("BLEACH", "flow", 4, "LYE", "CHALK", "water", 2);
+made("PERFUME", "flow", 4, "OIL", "HERB", "fire");
+
+/* --- mind (24) — never made, only lived --- */
+mind("DEATH", "something dies where you can see it");
+mind("BIRTH", "a child comes");
+mind("CHILD", "a child of yours reaches five");
+mind("KIN", "three of your blood alive at once");
+mind("HUNGER", "your belly empties completely");
+mind("THIRST", "you drink while starving");
+mind("COLD", "no fire burns where you sleep");
+mind("PAIN", "you are badly hurt");
+mind("FEAR", "you meet a beast with empty hands");
+mind("SLEEP", "you rest three turns together");
+mind("DREAM", "you sleep beside a living fire");
+mind("NIGHT", "you live a hundred turns");
+mind("DAY", "you survive your first twenty");
+mind("YEAR", "you grow a year older");
+mind("PATH", "you have walked five caves");
+mind("HOME", "you return to a hearth you built");
+mind("GIFT", "you feed a child from your own hands");
+mind("DEBT", "you eat the last of the larder");
+mind("COUNT", "you carry eight things at once");
+mind("NAME", "you name an heir");
+mind("MEMORY", "you find a word your line had lost");
+mind("TOMORROW", "you paint your first word");
+mind("STORY", "ten words painted on one wall");
+mind("WORD", "every other word painted");
+
+/* ==================================================================
+   MARKS — every glyph is built from its parents
+   ================================================================== */
+function blank(n) { const g = []; for (let i = 0; i < n; i++) g.push(new Uint8Array(n)); return g; }
+function rnd(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+
+/* primitive strokes for the base words, so the script looks systematic */
+function baseMark(seed) {
+  const g = blank(8), r = rnd(seed * 2654435761 + 7);
+  const put = (x, y) => { if (x >= 0 && y >= 0 && x < 8 && y < 8) g[y][x] = 1; };
+  const strokes = [
+    () => { const x = 1 + (r() * 6 | 0); for (let y = 1; y < 7; y++) put(x, y); },
+    () => { const y = 1 + (r() * 6 | 0); for (let x = 1; x < 7; x++) put(x, y); },
+    () => { const o = r() * 3 | 0; for (let i = 0; i < 6; i++) put(1 + i, 1 + i - o + (o ? 1 : 0)); },
+    () => { for (let i = 0; i < 6; i++) put(6 - i, 1 + i); },
+    () => { const cx = 2 + (r() * 3 | 0), cy = 2 + (r() * 3 | 0);
+            put(cx, cy - 1); put(cx - 1, cy); put(cx + 1, cy); put(cx, cy + 1); },
+    () => { const cx = 1 + (r() * 4 | 0), cy = 1 + (r() * 4 | 0);
+            for (let i = 0; i < 3; i++) { put(cx + i, cy); put(cx, cy + i); } },
+    () => { const cx = 2 + (r() * 3 | 0), cy = 2 + (r() * 3 | 0);
+            put(cx - 1, cy - 1); put(cx + 1, cy - 1); put(cx, cy); put(cx - 1, cy + 1); put(cx + 1, cy + 1); },
+    () => { const y = 2 + (r() * 3 | 0); for (let i = 0; i < 3; i++) { put(2 + i, y - i); put(4 + i, y - 2 + i); } }
+  ];
+  const used = {};
+  const stroke = () => {
+    let k = r() * strokes.length | 0, guard = 0;
+    while (used[k] && guard++ < 8) k = r() * strokes.length | 0;
+    used[k] = 1; strokes[k]();
+  };
+  const n = 3 + (r() * 2 | 0);
+  for (let i = 0; i < n; i++) stroke();
+  let ink = 0;
+  g.forEach(row => row.forEach(v => ink += v));
+  let guard = 0;
+  while (ink < 10 && guard++ < 4) {
+    stroke(); ink = 0;
+    g.forEach(row => row.forEach(v => ink += v));
+  }
+  return g;
+}
+/* a made word: parent marks placed together, tighter as the tier deepens */
+function compose(a, b, tier) {
+  const big = blank(16);
+  const stamp = (src, ox, oy) => {
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++)
+      if (src[y][x] && oy + y < 16 && ox + x < 16 && ox + x >= 0 && oy + y >= 0) big[oy + y][ox + x] = 1;
+  };
+  if (tier <= 3) { stamp(a, 0, 0); stamp(b, 8, 8); for (let i = 6; i < 10; i++) big[i][i] = 1; }
+  else { stamp(a, 1, 2); stamp(b, 6, 6); for (let i = 0; i < 3; i++) big[8 + i][7] = 1; }
+  return big;
+}
+function shrink(big) {           // 16x16 down to an 8x8 core for the next generation
+  const g = blank(8);
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++)
+    g[y][x] = (big[y * 2][x * 2] || big[y * 2 + 1][x * 2] || big[y * 2][x * 2 + 1] || big[y * 2 + 1][x * 2 + 1]) ? 1 : 0;
+  return g;
+}
+function buildMarks() {
+  WORDS.forEach(w => {
+    if (!w.a) {
+      w.core = baseMark(w.n + 1);
+      w.big = blank(16);
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) w.big[y][x] = w.core[y >> 1][x >> 1];
+    }
+  });
+  let pass = 0;
+  while (pass++ < 8) {
+    WORDS.forEach(w => {
+      if (w.big || !w.a) return;
+      const A = WBY[w.a], B = WBY[w.b];
+      if (!A || !B || !A.core || !B.core) return;
+      w.big = compose(A.core, B.core, w.tier);
+      w.core = shrink(w.big);
+    });
+  }
+  WORDS.forEach(w => { if (!w.big) { w.core = baseMark(w.n + 99); w.big = blank(16);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) w.big[y][x] = w.core[y >> 1][x >> 1]; } });
+  // no two words may share a mark, or deduction breaks
+  const sigs = {};
+  const sig = w => w.big.map(r => r.join("")).join("");
+  WORDS.forEach(w => {
+    let guard = 0;
+    while (sigs[sig(w)] && guard < 24) {
+      const spot = (w.n * 5 + guard * 3) % 16;
+      w.big[guard % 2 ? 15 : 0][spot] ^= 1;
+      guard++;
+    }
+    sigs[sig(w)] = w.id;
+    w.core = w.a ? shrink(w.big) : w.core;
+  });
+}
+function drawMark(x, y, w, ink, scale) {
+  scale = scale || 1;
+  const g = w.big;
+  for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++) {
+    if (!g[r][c]) continue;
+    if (scale === 1) px(x + c, y + r, ink);
+    else fill(x + c * scale, y + r * scale, scale, scale, ink);
+  }
+}
+
+/* ==================================================================
+   WORLD
+   ================================================================== */
+const T = { FLOOR: 0, WALL: 1, POOL: 2, SLAB: 3, HEARTH: 4, KILN: 5, WALLART: 6, EXIT: 7, RUBBLE: 8 };
+const MW = 16, MH = 9, TS = 16;
+const GW = 5, GH = 5;
+const BIOMES = ["mouth", "wet", "dry", "chalk", "deep"];
+const BIOMENAME = { mouth: "THE MOUTH", wet: "WET CAVE", dry: "DRY CAVE", chalk: "CHALK CAVE", deep: "THE DEEP" };
+const NODES = {
+  mouth: ["WOOD", "BARK", "RESIN", "BERRY", "STONE", "FLINT", "WATER"],
+  wet:   ["REED", "MOSS", "CLAY", "STONE", "WATER"],
+  dry:   ["FLINT", "ROOT", "GOURD", "STONE"],
+  chalk: ["CHALK", "OCHRE", "SAND", "SHELL", "SALT", "EGG"],
+  deep:  ["OBSIDIAN", "SULPHUR", "ORE", "ICE", "SNOW", "STONE"]
+};
+const GATES = {
+  chasm:  { need: "ROPE",  say: "A CHASM. NOTHING TO CROSS ON." },
+  fall:   { need: "PICK",  say: "FALLEN ROCK. YOU CANNOT SHIFT IT." },
+  flood:  { need: "RAFT",  say: "DEEP WATER. YOU WOULD DROWN." },
+  dark:   { need: "TORCH", say: "PITCH BLACK. YOU WOULD BE LOST." },
+  crack:  { need: "POWDER", say: "A CRACK TOO NARROW FOR A BODY." }
+};
+
+let S = null;
+let mode = "menu";
+let msg = ["", ""];
+let best = 0;
+
+function newState() {
+  return {
+    gen: 1, name: pickName(),
+    turn: 0, age: 14, lifespan: 34 + (Math.random() * 9 | 0),
+    food: 90, health: 100,
+    pack: [], packMax: 12, stackMax: 9,
+    known: {}, seen: {}, painted: {},
+    kids: [], mate: false, lastBirth: -50,
+    caves: {}, at: 0,
+    px: 8, py: 4,
+    larder: 12, store: [],
+    reveal: [], visited: {}, sleepRun: 0,
+    hearthsBuilt: 0, paintedTotal: 0
+  };
+}
+const NAMES = ["URK", "TAM", "BOSK", "REN", "GULL", "MOTH", "AKK", "SILT", "VARN", "EDDA", "OLM", "TASK", "BRAN", "HULK", "NIX"];
+function pickName() { return NAMES[Math.random() * NAMES.length | 0]; }
+
+function buildWorld() {
+  const caves = {};
+  for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+    const id = gy * GW + gx;
+    const ring = Math.max(Math.abs(gx - 2), Math.abs(gy - 2));
+    let biome = "mouth";
+    if (id !== 12) biome = ring === 1 ? (Math.random() < 0.5 ? "wet" : "dry")
+                          : (Math.random() < 0.4 ? "chalk" : (Math.random() < 0.6 ? "deep" : (Math.random() < 0.5 ? "wet" : "dry")));
+    caves[id] = { id, gx, gy, biome, links: {}, made: false };
+  }
+  caves[12].biome = "mouth";
+  // spanning maze, then a few loops
+  const seen = { 12: 1 }, frontier = [12];
+  while (frontier.length) {
+    const i = frontier.length - 1;
+    const c = caves[frontier[i]];
+    const opts = neigh(c).filter(n => !seen[n.id]);
+    if (!opts.length) { frontier.pop(); continue; }
+    const n = opts[Math.random() * opts.length | 0];
+    link(caves, c, n);
+    seen[n.id] = 1; frontier.push(n.id);
+  }
+  for (let k = 0; k < 6; k++) {
+    const c = caves[Math.random() * 25 | 0];
+    const opts = neigh(c).filter(n => !c.links[dirTo(c, n)]);
+    if (opts.length) link(caves, c, opts[Math.random() * opts.length | 0]);
+  }
+  // gates: harder ones further out
+  const kinds = Object.keys(GATES);
+  Object.values(caves).forEach(c => {
+    Object.keys(c.links).forEach(d => {
+      const l = c.links[d];
+      if (l.gate !== undefined) return;
+      const other = caves[l.to];
+      const ring = Math.max(Math.abs(c.gx - 2), Math.abs(c.gy - 2), Math.abs(other.gx - 2), Math.abs(other.gy - 2));
+      let gate = null;
+      if (ring >= 1 && Math.random() < 0.32) {
+        const pool = ring === 1 ? ["chasm", "fall"] : ring === 2 ? kinds : kinds;
+        gate = pool[Math.random() * pool.length | 0];
+      }
+      l.gate = gate;
+      other.links[opp(d)].gate = gate;
+    });
+  });
+  return caves;
+  function neigh(c) {
+    const out = [];
+    if (c.gx > 0) out.push(caves[c.id - 1]);
+    if (c.gx < GW - 1) out.push(caves[c.id + 1]);
+    if (c.gy > 0) out.push(caves[c.id - GW]);
+    if (c.gy < GH - 1) out.push(caves[c.id + GW]);
+    return out;
+  }
+}
+function dirTo(a, b) { if (b.gx > a.gx) return "e"; if (b.gx < a.gx) return "w"; if (b.gy > a.gy) return "s"; return "n"; }
+function opp(d) { return { n: "s", s: "n", e: "w", w: "e" }[d]; }
+function link(caves, a, b) {
+  const d = dirTo(a, b);
+  a.links[d] = { to: b.id }; b.links[opp(d)] = { to: a.id };
+}
+
+const EXITPOS = { n: [8, 0], s: [8, MH - 1], w: [0, 4], e: [MW - 1, 4] };
+function makeCave(c) {
+  const m = new Uint8Array(MW * MH).fill(T.WALL);
+  const ent = new Array(MW * MH).fill(null);
+  const I = (x, y) => y * MW + x;
+  let cx = 8, cy = 4, carved = 0, guard = 0;
+  m[I(cx, cy)] = T.FLOOR; carved++;
+  while (carved < 84 && guard++ < 5000) {
+    const d = Math.random() * 4 | 0;
+    cx = Math.max(1, Math.min(MW - 2, cx + (d === 0 ? 1 : d === 1 ? -1 : 0)));
+    cy = Math.max(1, Math.min(MH - 2, cy + (d === 2 ? 1 : d === 3 ? -1 : 0)));
+    if (m[I(cx, cy)] === T.WALL) { m[I(cx, cy)] = T.FLOOR; carved++; }
+  }
+  // carve corridors out to each exit, and remember them so nothing gets built there
+  const guarded = {};
+  const corridor = (d, clear) => {
+    const p = EXITPOS[d];
+    let x = p[0], y = p[1];
+    m[I(x, y)] = T.EXIT;
+    guarded[I(x, y)] = 1;
+    while (true) {
+      x += (x < 8 ? 1 : x > 8 ? -1 : 0);
+      y += (y < 4 ? 1 : y > 4 ? -1 : 0);
+      guarded[I(x, y)] = 1;
+      if (m[I(x, y)] === T.WALL || (clear && m[I(x, y)] === T.WALLART)) m[I(x, y)] = T.FLOOR;
+      if (x === 8 && y === 4) break;
+    }
+  };
+  Object.keys(c.links).forEach(d => corridor(d, false));
+  guarded[I(8, 4)] = 1;
+  const openList = () => {
+    const l = [];
+    for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++)
+      if (m[I(x, y)] === T.FLOOR && !ent[I(x, y)] && !guarded[I(x, y)]) l.push([x, y]);
+    return l;
+  };
+  const grab = () => { const l = openList(); return l.length ? l[Math.random() * l.length | 0] : null; };
+  const tile = (t, n) => { for (let i = 0; i < n; i++) { const p = grab(); if (p) m[I(p[0], p[1])] = t; } };
+  const node = (kind, n) => { for (let i = 0; i < n; i++) { const p = grab(); if (p) ent[I(p[0], p[1])] = { kind, ready: 0 }; } };
+
+  tile(T.SLAB, 1 + (Math.random() * 2 | 0));
+  tile(T.WALLART, 2);
+  if (c.biome === "wet" || c.biome === "mouth") tile(T.POOL, 1 + (Math.random() * 2 | 0));
+  NODES[c.biome].forEach(k => node(k, 1 + (Math.random() * 3 | 0)));
+  if (Math.random() < 0.7) node("GAME", 1 + (Math.random() * 2 | 0));
+  if (c.biome === "deep" && Math.random() < 0.5) node("BEAST", 1);
+  if (Math.random() < 0.4) node("MATE", 1);
+  if (Math.random() < 0.35) node("BONES", 1);
+
+  // and clear the corridors again in case anything crept in
+  Object.keys(c.links).forEach(d => corridor(d, true));
+  Object.keys(guarded).forEach(k => { if (ent[k]) ent[k] = null; });
+
+  c.map = m; c.ent = ent;
+  c.hearth = null; c.kiln = null;
+  c.walls = {};              // "x,y" -> { hints:[ids], painted:[ids] }
+  c.made = true;
+  return c;
+}
+function cave() { return S.caves[S.at]; }
+function tileAt(x, y) { return cave().map[y * MW + x]; }
+function entAt(x, y) { return cave().ent[y * MW + x]; }
+
+/* ==================================================================
+   KNOWING, PAINTING, INHERITING
+   ================================================================== */
+function knows(id) { return !!S.known[id]; }
+function knownCount() { return Object.keys(S.known).length; }
+function paintedCount() { return Object.keys(S.painted).length; }
+
+function discover(id, quiet) {
+  if (S.known[id]) return false;
+  S.known[id] = true;
+  if (S.lost && S.lost[id]) { delete S.lost[id]; if (id !== "MEMORY") earn("MEMORY"); }
+  S.kids.forEach(k => { if (k.alive && !k.words.includes(id)) k.words.push(id); });
+  if (!quiet) S.reveal.push(id);
+  return true;
+}
+function noteSeen(id) { if (!S.known[id]) S.seen[id] = true; }
+
+function paintWord(id) {
+  if (S.painted[id]) return false;
+  S.painted[id] = true;
+  const key = S.wallKey;
+  const w = cave().walls[key] || (cave().walls[key] = { hints: [], painted: [] });
+  w.painted.push(id);
+  if (w.painted.length >= 10) earn("STORY");
+  earn("TOMORROW");
+  if (paintedCount() >= WORDS.length - 1 && !S.painted.WORD) { discover("WORD"); S.painted.WORD = true; }
+  return true;
+}
+
+function earn(id) {
+  const w = WBY[id];
+  if (!w || S.known[id]) return;
+  discover(id);
+}
+
+/* ==================================================================
+   TURNS
+   ================================================================== */
+function say(a, b) { msg = [String(a || "").substr(0, 32), String(b || "").substr(0, 32)]; }
+
+function tick(n) {
+  n = n || 1;
+  for (let i = 0; i < n; i++) {
+    S.turn++;
+    if (S.turn % 2 === 0) S.food -= 1;
+    if (S.turn % 25 === 0) { S.age++; earn("YEAR"); }
+    if (S.turn === 20) earn("DAY");
+    if (S.turn === 100) earn("NIGHT");
+    if (S.turn % 3 === 0) {
+      const mouths = (S.mate ? 1 : 0) + S.kids.filter(k => k.alive).length;
+      if (mouths) {
+        if (S.larder >= mouths) S.larder -= mouths;
+        else {
+          S.larder = 0;
+          S.kids.forEach(k => { if (k.alive) k.health -= 4; });
+        }
+      }
+    }
+    if (S.mate && S.turn % 6 === 0 && cave().hearth) S.larder += 1;
+    S.kids.forEach(k => {
+      if (!k.alive) return;
+      k.age++;
+      if (k.age === 75) earn("CHILD");
+      if (k.health <= 0) { k.alive = false; SFX.loss(); say("A CHILD IS STILL AND COLD.", ""); earn("DEATH"); }
+      else if (k.health < 100 && S.larder > 4) k.health++;
+    });
+    if (S.mate && S.larder >= 8 && S.food > 40 && S.kids.filter(k => k.alive).length < 4
+        && S.turn - S.lastBirth > 34 && Math.random() < 0.12) {
+      S.lastBirth = S.turn;
+      S.kids.push({ born: S.turn, age: 0, alive: true, health: 80, words: [] });
+      SFX.birth(); say("A CHILD IS BORN AT THE HEARTH.", "");
+      earn("BIRTH");
+      if (S.kids.filter(k => k.alive).length + 1 >= 3) earn("KIN");
+    }
+    if (S.food <= 0) { S.food = 0; S.health -= 3; earn("HUNGER"); }
+    else if (S.food > 60 && S.health < 100) S.health++;
+    if (S.age >= S.lifespan) return die("YOUR YEARS RUN OUT.");
+    if (S.health <= 0) return die("YOUR BODY GIVES UP.");
+  }
+}
+
+function hurt(amount, what) {
+  S.health -= amount;
+  if (amount >= 15) earn("PAIN");
+  if (S.health <= 0) die(what || "YOU BLEED OUT.");
+}
+
+function die(why) {
+  cv.classList.remove("zoom");
+  S.reveal = [];
+  SFX.death();
+  best = Math.max(best, paintedCount());
+  const heirs = S.kids.filter(k => k.alive && k.health >= 50);
+  heirs.sort((a, b) => b.words.length - a.words.length || a.born - b.born);
+  S.heir = heirs[0] || null;
+  S.deathWhy = why;
+  mode = "death";
+  render();
+}
+
+function nextLife() {
+  if (!S.heir) { mode = "over"; render(); return; }
+  const inherited = {};
+  Object.keys(S.painted).forEach(id => inherited[id] = true);
+  S.heir.words.forEach(id => inherited[id] = true);
+  const lostList = Object.keys(S.known).filter(id => !inherited[id]);
+  const lost = lostList.length;
+  const carried = S.pack.filter(id => !FOODVAL[id]).slice(0, 6);
+  const caves = S.caves, at = S.at, gen = S.gen + 1, painted = S.painted, seen = S.seen;
+  const kidsLeft = S.kids.filter(k => k.alive && k !== S.heir);
+  const bestSoFar = best;
+  S = newState();
+  S.gen = gen; S.caves = caves; S.at = at; S.painted = painted; S.seen = seen;
+  S.known = inherited; S.pack = carried;
+  S.lost = {};
+  Object.keys(painted).length; lostList.forEach(id => S.lost[id] = true);
+  S.kids = kidsLeft.map(k => ({ born: 0, age: k.age, alive: true, health: k.health, words: [] }));
+  S.mate = false;
+  best = bestSoFar;
+  const h = cave().hearth;
+  S.px = h ? h[0] : 8; S.py = h ? h[1] : 4;
+  earn("NAME");
+  if (lost > 0) say(S.name + " TAKES UP THE LINE.", lost + " UNPAINTED WORDS ARE LOST.");
+  else say(S.name + " TAKES UP THE LINE.", "NOTHING WAS LOST.");
+  mode = "play";
+  render();
+}
+
+function newRun() {
+  S = newState();
+  S.caves = buildWorld();
+  S.at = 12;
+  makeCave(cave());
+  S.visited[12] = 1;
+  say("A CAVE. NO WORDS. NO FIRE.", "STRIKE TWO FLINTS TOGETHER.");
+  mode = "play";
+  render();
+}
+
+/* ==================================================================
+   MOVING AND GATHERING
+   ================================================================== */
+/* every new word gets the screen, however you came by it */
+function noteTaken(ids) {
+  const fresh = [];
+  ids.forEach(id => { if (WBY[id] && !S.known[id] && discover(id)) fresh.push(id); });
+  return fresh.length ? "NEW WORD: " + fresh.join(" ") : "";
+}
+function has(id, n) { return S.pack.filter(x => x === id).length >= (n || 1); }
+function countOf(id) { return S.pack.filter(x => x === id).length; }
+function kinds() { return new Set(S.pack).size; }
+function consume(id) { const i = S.pack.indexOf(id); if (i >= 0) S.pack.splice(i, 1); }
+/* one slot per kind, nine deep. FULL means the slot is capped;
+   NOROOM means you are carrying too many different things. */
+function give(id, n) {
+  n = n || 1;
+  let got = 0;
+  for (let i = 0; i < n; i++) {
+    const have = countOf(id);
+    if (have === 0 && kinds() >= S.packMax) break;
+    if (have >= S.stackMax) break;
+    S.pack.push(id); got++;
+  }
+  if (kinds() >= 8) earn("COUNT");
+  return got;
+}
+function giveStatus(id) {
+  if (countOf(id) >= S.stackMax) return "FULL";
+  if (countOf(id) === 0 && kinds() >= S.packMax) return "NOROOM";
+  return "OK";
+}
+
+function move(dx, dy) {
+  if (mode !== "play") return;
+  const nx = S.px + dx, ny = S.py + dy;
+  if (nx < 0 || ny < 0 || nx >= MW || ny >= MH) return;
+  const t = tileAt(nx, ny);
+  const e = entAt(nx, ny);
+  S.sleepRun = 0;
+  if (e && e.ready <= S.turn) { gather(nx, ny, e); return; }
+  if (t === T.WALL) { SFX.block(); return; }
+  if (t === T.WALLART) { openWall(nx, ny); return; }
+  if (t === T.EXIT) { travel(nx, ny); return; }
+  S.px = nx; S.py = ny;
+  SFX.step();
+  if (t === T.POOL) { S.food = Math.min(100, S.food + 2); if (S.food < 20) earn("THIRST"); }
+  if (t === T.HEARTH) { if (storeAtHearth()) return; }
+  tick(); step();
+}
+function step() { if (mode === "play") render(); }
+
+function gather(x, y, e) {
+  const k = e.kind;
+  if (k === "GAME") {
+    if (has("BOW") || has("AXE") || has("KNIFE")) {
+      const spoils = ["MEAT", "MEAT", "HIDE", "BONE", "SINEW", "FAT", Math.random() < 0.4 ? "HORN" : "FEATHER"];
+      spoils.forEach(id => give(id));
+      SFX.kill(); say("YOU BRING IT DOWN AND STRIP IT.", noteTaken(spoils));
+      e.ready = S.turn + 90;
+      tick(3);
+    } else {
+      SFX.flee(); say("IT BOLTS. EMPTY HANDS CATCH NOTHING.", "");
+      earn("FEAR");
+      e.ready = S.turn + 20;
+      tick();
+    }
+  } else if (k === "BEAST") {
+    if (has("BOW") || has("AXE")) {
+      const spoils = ["MEAT", "MEAT", "HIDE", "HORN"];
+      spoils.forEach(id => give(id));
+      SFX.kill(); say("YOU DRIVE IT OFF THE LEDGE.", noteTaken(spoils));
+      cave().ent[y * MW + x] = null;
+      tick(3);
+    } else {
+      SFX.hurt(); hurt(20, "THE BEAST FINISHES YOU.");
+      earn("FEAR");
+      say("IT TEARS AT YOU AND YOU RUN.", "");
+      tick(2);
+    }
+  } else if (k === "MATE") {
+    if (S.mate) { say("SHE IS ALREADY AT YOUR FIRE.", ""); cave().ent[y * MW + x] = null; render(); return; }
+    S.mate = true;
+    cave().ent[y * MW + x] = null;
+    SFX.meet(); say("SHE COMES BACK TO YOUR FIRE.", "");
+    if (!cave().hearth) say("SHE COMES BACK WITH YOU.", "SHE WILL WANT A FIRE.");
+    tick(2);
+  } else if (k === "BONES") {
+    give("BONE");
+    SFX.bone(); say("OLD BONES. SOMEONE ENDED HERE.", noteTaken(["BONE"]));
+    earn("DEATH");
+    cave().ent[y * MW + x] = null;
+    tick();
+  } else {
+    const n = 2 + (Math.random() * 2 | 0);
+    const why = giveStatus(k);
+    if (why === "NOROOM") {
+      SFX.block(); say("TOO MANY DIFFERENT THINGS.", "PRESS M, THEN E TO PUT ONE DOWN.");
+      render(); return;
+    }
+    const got = give(k, n);
+    if (!got) {
+      // you already have all you can carry of this — clear it anyway
+      SFX.take(); say("YOU HAVE ALL THE " + k + " YOU CAN CARRY.", "");
+    } else {
+      SFX.take();
+      const note = noteTaken([k]);
+      say("YOU TAKE " + got + " " + k + ".", note);
+    }
+    e.ready = S.turn + 55;
+    tick();
+  }
+  if (mode === "play") render();
+}
+
+function travel(x, y) {
+  const dir = y === 0 ? "n" : y === MH - 1 ? "s" : x === 0 ? "w" : "e";
+  const l = cave().links[dir];
+  if (!l) { SFX.block(); return; }
+  if (l.gate) {
+    const g = GATES[l.gate];
+    if (!has(g.need)) { SFX.block(); say(g.say, "YOU NEED " + g.need + "."); render(); return; }
+    if (l.gate === "crack") { consume("POWDER"); say("THE POWDER BLOWS THE CRACK WIDE.", ""); SFX.kill(); }
+    else if (Math.random() < 0.18) { consume(g.need); say("YOUR " + g.need + " GIVES OUT BEHIND YOU.", ""); }
+    if (l.gate === "crack") { l.gate = null; cave().links[dir].gate = null; S.caves[l.to].links[opp(dir)].gate = null; }
+  }
+  S.at = l.to;
+  const c = cave();
+  if (!c.made) makeCave(c);
+  if (!S.visited[c.id]) { S.visited[c.id] = 1; if (Object.keys(S.visited).length >= 5) earn("PATH"); }
+  else if (c.hearth) earn("HOME");
+  const p = EXITPOS[opp(dir)];
+  S.px = p[0]; S.py = p[1];
+  // step inward off the exit tile
+  S.px += (dir === "n" ? 0 : dir === "s" ? 0 : dir === "e" ? -1 : 1);
+  S.py += (dir === "n" ? -1 : dir === "s" ? 1 : 0);
+  S.px = Math.max(1, Math.min(MW - 2, S.px)); S.py = Math.max(1, Math.min(MH - 2, S.py));
+  SFX.down();
+  say("YOU COME INTO " + BIOMENAME[c.biome] + ".", "");
+  tick(2);
+  render();
+}
+
+/* ==================================================================
+   STATIONS AND MAKING
+   ================================================================== */
+const STATION_GIVES = { fire: "FIRE", kiln: "FIRE", water: "WATER", stone: "STONE" };
+function stationHere() {
+  const t = tileAt(S.px, S.py);
+  if (t === T.KILN) return "kiln";
+  if (t === T.HEARTH) return cave().hearthLit ? "fire" : null;
+  if (t === T.POOL) return "water";
+  if (t === T.SLAB) return "stone";
+  return null;
+}
+function wallHere() { return tileAt(S.px, S.py) === T.WALLART; }
+
+function recipeFor(a, b, st) {
+  return WORDS.find(w => w.a && w.st === st &&
+    ((w.a === a && w.b === b) || (w.a === b && w.b === a)));
+}
+function recipeAnywhere(a, b) {
+  return WORDS.find(w => w.a && ((w.a === a && w.b === b) || (w.a === b && w.b === a)));
+}
+
+function attempt(a, b, va, vb) {
+  const st = stationHere();
+  if (!st) { SFX.block(); say("NOTHING HERE TO WORK WITH.", ""); mode = "play"; render(); return; }
+  const hit = recipeFor(a, b, st);
+  const near = recipeAnywhere(a, b);
+  if (!va) consume(a);
+  if (!vb) consume(b);
+
+  if (hit) {
+    if (hit.id === "FIRE") { lightHearth(); }
+    else if (hit.id === "KILN") { buildKiln(); }
+    else if (hit.id === "WELL" || hit.id === "CHANNEL") { digWater(); }
+    else give(hit.id);
+    const isNew = discover(hit.id);
+    SFX.craft();
+    const used = [];
+    if (!va) used.push(a);
+    if (!vb) used.push(b);
+    if (!isNew) say("YOU MAKE ANOTHER " + hit.id + ".", used.join(" AND ") + " GONE");
+    tick(hit.tier + 1);
+    mode = "play"; render(); return;
+  }
+
+  // failure — the cost comes from what you were handling, not what you wanted
+  if (!S.tried) S.tried = {};
+  S.tried[triedKey(st, a, b)] = true;
+  const spent = [];
+  if (!va) spent.push(a);
+  if (!vb) spent.push(b);
+  const gone = spent.length ? spent.join(" AND ") + " GONE" : "NOTHING SPENT";
+  const danger = Math.max(WBY[a].danger, WBY[b].danger) + ((st === "fire" || st === "kiln") ? 1 : 0);
+  let line = near ? "IT HISSES AND GOES BLACK. WRONG PLACE." : "IT WILL NOT JOIN.";
+  let line2 = gone;
+  if (danger >= 3) {
+    SFX.hurt();
+    if (Math.random() < 0.3) { rasp(0.5, 0, 60, 900); die("THE MIXTURE TAKES YOUR HANDS AND FACE."); return; }
+    hurt(34, "THE BLAST FINISHES YOU.");
+    line = "IT GOES UP IN YOUR FACE. BADLY BURNED.";
+  } else if (danger === 2) {
+    SFX.hurt(); hurt(20, "IT POISONS YOU THROUGH.");
+    line = "IT BURNS WHERE IT TOUCHED YOU.";
+  } else if (danger === 1) {
+    SFX.hurt(); hurt(8);
+    line = near ? "WRONG PLACE, AND IT CUTS YOU." : "IT WILL NOT JOIN. IT CUTS YOU.";
+  } else SFX.block();
+  say(line, line2);
+  tick(1);
+  if (mode === "play") render();
+}
+
+function placeNear(tile) {
+  const c = cave();
+  const spots = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]];
+  for (const sp of spots) {
+    const x = S.px + sp[0], y = S.py + sp[1];
+    if (x > 0 && y > 0 && x < MW - 1 && y < MH - 1 && c.map[y * MW + x] === T.FLOOR) {
+      c.map[y * MW + x] = tile; return [x, y];
+    }
+  }
+  return null;
+}
+function lightHearth() {
+  const c = cave();
+  const at = placeNear(T.HEARTH);
+  if (!at) { say("NO ROOM HERE FOR A FIRE.", ""); return; }
+  c.hearth = at;
+  c.hearthLit = true;
+  S.hearthsBuilt++;
+  SFX.fire();
+}
+function buildKiln() {
+  const at = placeNear(T.KILN);
+  if (at) { cave().kiln = at; SFX.fire(); }
+  else say("NO ROOM HERE FOR A KILN.", "");
+}
+function digWater() {
+  if (placeNear(T.POOL)) SFX.drink();
+  else say("NO ROOM TO DIG HERE.", "");
+}
+
+/* ==================================================================
+   ACTIONS
+   ================================================================== */
+const FOODVAL = { BERRY: 8, ROOT: 8, EGG: 12, MEAT: 30, BREAD: 26, SOUP: 34, BROTH: 20, SALTFISH: 24, STOCK: 22, MEDICINE: 12, HERB: 6, FLOUR: 10, SEED: 6 };
+
+function eat() {
+  if (mode !== "play") return;
+  const order = ["SOUP", "BREAD", "MEAT", "SALTFISH", "STOCK", "BROTH", "EGG", "BERRY", "ROOT", "FLOUR", "SEED", "HERB"];
+  for (const o of order) {
+    if (has(o)) {
+      consume(o);
+      S.food = Math.min(100, S.food + FOODVAL[o]);
+      SFX.eat(); say("YOU EAT THE " + o + ".", "");
+      if (S.kids.some(k => k.alive)) earn("GIFT");
+      tick(); if (mode === "play") render();
+      return;
+    }
+  }
+  if (S.larder > 0 && cave().hearth && S.px === cave().hearth[0] && S.py === cave().hearth[1]) {
+    if (S.larder <= 2) earn("DEBT");
+    S.larder = Math.max(0, S.larder - 2);
+    S.food = Math.min(100, S.food + 14);
+    SFX.eat(); say("YOU EAT FROM THE LARDER.", "");
+    tick(); render(); return;
+  }
+  SFX.block(); say("NOTHING TO EAT IN YOUR HANDS.", ""); render();
+}
+
+function storeAtHearth() {
+  const c = cave();
+  if (!c.hearth || S.px !== c.hearth[0] || S.py !== c.hearth[1]) return false;
+  let food = 0, kept = [];
+  S.pack.forEach(id => {
+    if (FOODVAL[id]) { S.larder += Math.round(FOODVAL[id] / 4); food++; }
+    else kept.push(id);
+  });
+  if (food) {
+    S.pack = kept;
+    SFX.take(); say("YOU LAY " + food + " THINGS BY THE FIRE.", "LARDER " + S.larder + ".");
+    tick(); render(); return true;
+  }
+  return false;
+}
+
+function rest() {
+  S.sleepRun++;
+  if (S.sleepRun >= 3) {
+    earn("SLEEP");
+    const c = cave();
+    if (c.hearthLit) earn("DREAM"); else earn("COLD");
+  }
+  SFX.step(); say("YOU REST.", "");
+  tick(2); if (mode === "play") render();
+}
+
+/* ==================================================================
+   SCREENS
+   ================================================================== */
+let returnMode = "play";
+let revealT0 = 0;
+let revealLock = 0;
+let craft = { a: null, page: 0 };
+let lexFam = 0;
+let wallOpen = null;
+let paintPick = 0;
+
+function versionStamp(col) {
+  text(W - 8 * 6 - 4, H - 11, "V" + VERSION, col === undefined ? WHITE : col);
+}
+
+function render() {
+  setKeyLabel("eat", mode === "craft" ? "DROP" : "EAT");
+  if (S && S.reveal && S.reveal.length && mode !== "reveal" && mode !== "death" && mode !== "over") {
+    returnMode = mode === "craft" ? "play" : mode;
+    mode = "reveal"; revealT0 = 0;
+    revealLock = performance.now() + 1400;
+    cv.classList.add("zoom");
+    SFX.word();
+    drawReveal(0); flush();
+    requestAnimationFrame(revealFrame);
+    return;
+  }
+  if (mode === "reveal") { drawReveal(0); flush(); return; }
+  if (mode === "play") drawPlay();
+  else if (mode === "craft") drawCraft();
+  else if (mode === "wall") drawWall();
+  else if (mode === "paint") drawPaint();
+  else if (mode === "lex") drawLex();
+  else if (mode === "map") drawMap();
+  else if (mode === "death") drawDeath();
+  else if (mode === "over") drawOver();
+  else if (mode === "title") drawTitle();
+  flush();
+}
+
+function pad(s, n) { s = String(s); while (s.length < n) s += " "; return s; }
+
+function drawPlay() {
+  border(BLACK); cls(BLACK);
+  const c = cave();
+  tc(0, 0, (pad("AGE " + S.age, 8) + pad("FOOD " + Math.max(0, S.food | 0), 9) +
+            pad("HURT " + Math.max(0, 100 - S.health), 9) + BIOMENAME[c.biome].substr(0, 6)).substr(0, 32), BWHITE);
+  tc(0, 1, (pad("PACK " + kinds() + "/" + S.packMax, 10) + pad("LARDER " + S.larder, 11) +
+            pad(paintedCount() + "/" + WORDS.length, 8)).substr(0, 32), CYAN);
+  fill(SX, SY + 16, SW, 1, BLUE);
+
+  const oy = SY + 18;
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) drawTile(SX + x * TS, oy + y * TS, c.map[y * MW + x], x, y, c);
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const e = c.ent[y * MW + x];
+    if (!e || e.ready > S.turn) continue;
+    drawNode(SX + x * TS, oy + y * TS, e.kind);
+  }
+  if (c.hearth) {
+    const alive = S.kids.filter(k => k.alive);
+    if (S.mate) sprite(SX + Math.max(0, c.hearth[0] - 1) * TS, oy + Math.max(0, c.hearth[1] - 1) * TS, "woman", BMAG);
+    alive.slice(0, 3).forEach((k, i) => {
+      const sx = c.hearth[0] + [1, -1, 0][i], sy = c.hearth[1] + [0, 0, -1][i];
+      if (sx < 0 || sy < 0 || sx >= MW || sy >= MH) return;
+      sprite(SX + sx * TS, oy + sy * TS, "child", k.health > 50 ? BCYAN : BRED);
+    });
+  }
+  sprite(SX + S.px * TS, oy + S.py * TS, "man", BYELLOW);
+
+  fill(SX, SY + 18 + MH * TS, SW, 1, BLUE);
+  tc(0, 22, msg[0], BWHITE);
+  tc(0, 23, msg[1], msg[1].indexOf("NEW WORD") === 0 ? BGREEN : YELLOW);
+  versionStamp(WHITE);
+}
+
+function drawTile(dx, dy, t, mx, my, c) {
+  const seed = mx * 7 + my * 13;
+  fill(dx, dy, TS, TS, BLACK);
+  switch (t) {
+    case T.WALL:
+      for (let r = 0; r < TS; r += 4) for (let cc = 0; cc < TS; cc += 4)
+        if (((mx * 31 + my * 17 + r * 3 + cc) % 5) > 1) fill(dx + cc, dy + r, 3, 3, BLUE);
+      break;
+    case T.FLOOR: case T.EXIT:
+      px(dx + (seed % 13) + 1, dy + (seed % 11) + 2, BLUE);
+      px(dx + ((seed * 3) % 13) + 1, dy + ((seed * 5) % 11) + 2, BLUE);
+      break;
+    case T.POOL:
+      for (let r = 1; r < TS; r += 3) for (let cc = 0; cc < TS; cc++)
+        px(dx + cc, dy + r + (((cc + seed + r * 2) % 8) < 4 ? 0 : 1), BCYAN);
+      break;
+    case T.SLAB:
+      fill(dx + 1, dy + 4, TS - 2, TS - 8, WHITE);
+      fill(dx + 3, dy + 6, TS - 6, TS - 12, BLACK);
+      break;
+    case T.RUBBLE:
+      sprite(dx, dy, "boulder", WHITE); break;
+    case T.WALLART: {
+      for (let cc = 0; cc < TS; cc++) fill(dx + cc, dy, 1, TS, ((cc + seed) % 7 === 0) ? BLUE : BLACK);
+      fill(dx, dy, TS, 1, MAGENTA); fill(dx, dy + TS - 1, TS, 1, MAGENTA);
+      fill(dx, dy, 1, TS, MAGENTA); fill(dx + TS - 1, dy, 1, TS, MAGENTA);
+      const key = mx + "," + my;
+      const w = c.walls[key];
+      const col = (w && w.painted.length) ? BYELLOW : BRED;
+      mark8(dx + 4, dy + 4, col);
+      break;
+    }
+  }
+  if (t === T.HEARTH) sprite(dx, dy, "fire", c.hearthLit ? BRED : WHITE, c.hearthLit ? BYELLOW : WHITE);
+  if (t === T.KILN) { fill(dx + 2, dy + 3, 12, 11, WHITE); fill(dx + 5, dy + 8, 6, 6, BRED); }
+  if (t === T.EXIT) sprite(dx, dy, "exit", WHITE, WHITE, -1);
+}
+function mark8(x, y, col) {
+  const hand = ["#.#.#.#.", "#.#.#.#.", "#.#.#.#.", "########", "########", ".######.", "..####..", "..####.."];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (hand[r][c] === "#") px(x + c, y + r, col);
+}
+function drawNode(dx, dy, kind) {
+  const w = WBY[kind];
+  if (kind === "GAME") { sprite(dx, dy, "deer", BYELLOW); return; }
+  if (kind === "MATE") { sprite(dx, dy, "woman", BMAG); return; }
+  if (kind === "BEAST") { sprite(dx, dy, "beast", BRED); return; }
+  if (kind === "BONES") { sprite(dx, dy, "bones", BWHITE); return; }
+  if (!w) return;
+  drawMark(dx, dy, w, FAMS[w.fam].lit, 1);
+}
+
+/* ---- making ---- */
+function craftItems() {
+  const st = stationHere();
+  const list = [];
+  if (st) list.push({ id: STATION_GIVES[st], virtual: true, count: 0 });
+  const tally = {};
+  S.pack.forEach(id => { tally[id] = (tally[id] || 0) + 1; });
+  Object.keys(tally)
+    .sort((x, y) => (WBY[x] ? WBY[x].n : 999) - (WBY[y] ? WBY[y].n : 999))
+    .forEach(id => list.push({ id, virtual: false, count: tally[id] }));
+  return list;
+}
+function triedKey(st, a, b) { return st + "|" + [a, b].sort().join("|"); }
+function wasTried(a, b) {
+  const st = stationHere();
+  return st ? !!(S.tried && S.tried[triedKey(st, a, b)]) : false;
+}
+function craftCell(i) {
+  const col = i % 6, row = (i / 6) | 0;
+  return [SX + 7 + col * 41, SY + 24 + row * 44];
+}
+function drawCraft() {
+  border(BLACK); cls(BLACK);
+  const st = stationHere();
+  centre(SY + 3, st ? ("AT THE " + st.toUpperCase()) : "NOWHERE TO WORK", st ? BYELLOW : BRED);
+  fill(SX + 8, SY + 14, SW - 16, 1, BLUE);
+  const items = craftItems();
+  items.forEach((it, i) => {
+    const c = craftCell(i), x = c[0], y = c[1];
+    const w = WBY[it.id];
+    const chosen = (craft.a === i);
+    const cursor = (craft.sel === i);
+    if (chosen) fill(x - 3, y - 3, 38, 44, BLUE);
+    if (cursor && !chosen) { fill(x - 3, y - 3, 38, 1, WHITE); fill(x - 3, y + 40, 38, 1, WHITE);
+                             fill(x - 3, y - 3, 1, 44, WHITE); fill(x + 34, y - 3, 1, 44, WHITE); }
+    if (it.virtual) {
+      fill(x - 3, y - 3, 38, 1, BCYAN); fill(x - 3, y + 40, 38, 1, BCYAN);
+      fill(x - 3, y - 3, 1, 44, BCYAN); fill(x + 34, y - 3, 1, 44, BCYAN);
+    }
+    drawMark(x + 2, y, w, it.virtual ? BWHITE : FAMS[w.fam].lit, 2);
+    if (it.count > 1) { fill(x + 24, y + 22, 10, 9, BLACK); text(x + 25, y + 23, String(it.count), BCYAN); }
+    const nm = it.id.substr(0, 4);
+    text(x + 17 - nm.length * 4, y + 33, nm, chosen ? BYELLOW : (it.virtual ? BCYAN : WHITE));
+    // a small cross on anything already tried with the chosen thing, here
+    if (craft.a !== null && !chosen && wasTried(items[craft.a].id, it.id)) {
+      for (let d = 0; d < 8; d++) { px(x + 24 + d, y + d, BRED); px(x + 31 - d, y + d, BRED); }
+    }
+  });
+  fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
+  if (!st) centre(SY + 164, "NO PLACE TO WORK - YOU CAN DROP", BRED);
+  else centre(SY + 164, craft.a === null ? "PICK ONE THING   L CLOSES" : "PICK WHAT GOES WITH IT   X = TRIED", BWHITE);
+  centre(SY + 176, "CYAN BOX IS THIS PLACE. E DROPS.", CYAN);
+  versionStamp(WHITE);
+}
+
+/* ---- a painted wall ---- */
+function openWall(wx, wy) {
+  const c = cave(), key = wx + "," + wy;
+  S.wallKey = key;
+  let w = c.walls[key];
+  if (!w) {
+    w = c.walls[key] = { hints: [], painted: [] };
+    // ancient marks: words you could plausibly reach next
+    const cands = WORDS.filter(x => x.a && !S.known[x.id] &&
+      ((S.known[x.a] ? 1 : 0) + (S.known[x.b] ? 1 : 0)) >= 1);
+    const pool = cands.length ? cands : WORDS.filter(x => x.a && !S.known[x.id]);
+    for (let i = 0; i < 3 && pool.length; i++) {
+      const pick = pool.splice(Math.random() * pool.length | 0, 1)[0];
+      w.hints.push(pick.id);
+    }
+  }
+  w.hints.forEach(id => noteSeen(id));
+  wallOpen = w;
+  mode = "wall";
+  SFX.wall();
+  cv.classList.add("zoom");
+  tick();
+  if (mode === "wall") render();
+}
+function drawWall() {
+  border(BLACK); cls(BLACK);
+  for (let y = 0; y < SH; y += 3) for (let x = 0; x < SW; x += 3)
+    if (((x * 7 + y * 11) % 17) < 3) fill(SX + x, SY + y, 2, 2, BLUE);
+  centre(SY + 4, "A PAINTED WALL", BWHITE);
+  fill(SX + 16, SY + 16, SW - 32, 1, MAGENTA);
+
+  const hints = wallOpen.hints, mine = wallOpen.painted;
+  centre(SY + 24, "MARKS FROM BEFORE YOU", MAGENTA);
+  hints.forEach((id, i) => {
+    const w = WBY[id];
+    const x = SX + 40 + i * 64;
+    drawMark(x, SY + 36, w, S.known[id] ? FAMS[w.fam].lit : FAMS[w.fam].ink, 2);
+    const nm = S.known[id] ? id : "?????";
+    text(x + 16 - nm.length * 4, SY + 72, nm.substr(0, 8), S.known[id] ? BGREEN : WHITE);
+  });
+
+  fill(SX + 16, SY + 88, SW - 32, 1, MAGENTA);
+  centre(SY + 94, "WHAT YOUR LINE HAS PUT HERE", MAGENTA);
+  if (!mine.length) centre(SY + 112, "NOTHING YET", WHITE);
+  else mine.slice(0, 12).forEach((id, i) => {
+    const w = WBY[id];
+    drawMark(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22, w, FAMS[w.fam].lit, 1);
+    text(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22 + 17, id.substr(0, 4), WHITE);
+  });
+  fill(SX + 16, SY + 156, SW - 32, 1, MAGENTA);
+  centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT A WORD" : "M PAINTS A WORD - NEEDS PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
+  centre(SY + 176, "SPACE TO STEP BACK", CYAN);
+  versionStamp(WHITE);
+}
+
+/* ---- choosing a word to paint ---- */
+function drawPaint() {
+  border(BLACK); cls(BLACK);
+  const list = paintable();
+  centre(SY + 4, "PAINT WHICH WORD", BYELLOW);
+  fill(SX + 8, SY + 16, SW - 16, 1, BLUE);
+  if (!list.length) { centre(SY + 80, "EVERYTHING YOU KNOW IS PAINTED", WHITE); versionStamp(WHITE); return; }
+  const start = Math.max(0, Math.min(paintPick - 3, list.length - 7));
+  for (let i = 0; i < 7 && start + i < list.length; i++) {
+    const id = list[start + i], w = WBY[id];
+    const y = SY + 26 + i * 20;
+    const on = (start + i === paintPick);
+    if (on) fill(SX + 8, y - 2, SW - 16, 20, BLUE);
+    drawMark(SX + 14, y, w, FAMS[w.fam].lit, 1);
+    text(SX + 36, y + 4, id, on ? BYELLOW : BWHITE);
+  }
+  fill(SX + 8, SY + 168, SW - 16, 1, BLUE);
+  centre(SY + 174, "PIGMENT " + S.pack.filter(x => x === "PIGMENT").length + "   SPACE TO STEP BACK", CYAN);
+  versionStamp(WHITE);
+}
+function paintable() { return Object.keys(S.known).filter(id => !S.painted[id]); }
+
+/* ---- the lexicon ---- */
+function drawLex() {
+  border(BLACK); cls(BLACK);
+  const fam = FAMORDER[lexFam], F = FAMS[fam];
+  const list = WORDS.filter(w => w.fam === fam);
+  centre(SY + 2, F.name + "  " + list.filter(w => S.painted[w.id]).length + "/" + list.length, F.lit);
+  fill(SX + 6, SY + 13, SW - 12, 1, F.ink);
+  list.forEach((w, i) => {
+    const col = i % 6, row = (i / 6) | 0;
+    const x = SX + 8 + col * 41, y = SY + 18 + row * 40;
+    const known = S.known[w.id], seen = S.seen[w.id], painted = S.painted[w.id];
+    if (known || seen) drawMark(x + 6, y, w, known ? F.lit : F.ink, 1);
+    else for (let d = 0; d < 16; d += 3) { px(x + 6 + d, y, WHITE); px(x + 6 + d, y + 15, WHITE); px(x + 6, y + d, WHITE); px(x + 21, y + d, WHITE); }
+    const nm = known ? w.id.substr(0, 5) : (seen ? "?????" : "-");
+    text(x + 14 - nm.length * 4, y + 18, nm, known ? (painted ? BGREEN : BWHITE) : WHITE);
+    if (painted) fill(x + 14 - nm.length * 4, y + 27, nm.length * 8, 1, BGREEN);
+  });
+  fill(SX + 6, SY + 178, SW - 12, 1, F.ink);
+  centre(SY + 183, "5 6 TO TURN   " + paintedCount() + "/" + WORDS.length + " PAINTED", CYAN);
+  versionStamp(WHITE);
+}
+
+/* ---- the world so far ---- */
+function drawMap() {
+  border(BLACK); cls(BLACK);
+  centre(SY + 4, "WHERE YOU HAVE BEEN", BYELLOW);
+  fill(SX + 8, SY + 16, SW - 16, 1, BLUE);
+  const cellW = 44, cellH = 30, ox = SX + 18, oy = SY + 26;
+  for (let gy = 0; gy < GH; gy++) for (let gx = 0; gx < GW; gx++) {
+    const id = gy * GW + gx, c = S.caves[id];
+    const x = ox + gx * cellW, y = oy + gy * cellH;
+    if (!S.visited[id]) { px(x + 14, y + 10, WHITE); continue; }
+    const cols = { mouth: BGREEN, wet: BCYAN, dry: BYELLOW, chalk: BWHITE, deep: BMAG };
+    fill(x + 6, y + 3, 22, 16, cols[c.biome]);
+    if (c.hearth) fill(x + 13, y + 8, 8, 6, BRED);
+    if (id === S.at) { fill(x + 4, y + 1, 26, 1, BWHITE); fill(x + 4, y + 20, 26, 1, BWHITE); fill(x + 4, y + 1, 1, 20, BWHITE); fill(x + 29, y + 1, 1, 20, BWHITE); }
+    Object.keys(c.links).forEach(d => {
+      const l = c.links[d];
+      if (!S.visited[l.to]) return;
+      const col = l.gate ? BRED : WHITE;
+      if (d === "e") fill(x + 28, y + 10, cellW - 22, 1, col);
+      if (d === "s") fill(x + 17, y + 19, 1, cellH - 16, col);
+    });
+  }
+  fill(SX + 8, SY + 172, SW - 16, 1, BLUE);
+  centre(SY + 178, "RED LINKS NEED A TOOL", CYAN);
+  versionStamp(WHITE);
+}
+
+/* ---- a word arrives ---- */
+function revealFrame(ts) {
+  if (mode !== "reveal") return;
+  if (!revealT0) revealT0 = ts;
+  drawReveal(ts - revealT0);
+  flush();
+  requestAnimationFrame(revealFrame);
+}
+function drawReveal(t) {
+  const id = S.reveal[0];
+  if (!id) return;
+  const w = WBY[id], F = FAMS[w.fam];
+  border(t < 700 ? (((t / 100) | 0) % 2 ? BYELLOW : BRED) : BLACK);
+  cls(BLACK);
+  centre(SY + 10, w.mind ? "A WORD FOR WHAT HAPPENED" : "A NEW THING, A NEW WORD", BWHITE);
+  if (t < 700) {
+    const r = Math.floor(t / 8), cxp = SX + 128, cyp = SY + 76;
+    for (let k = 0; k < 3; k++) {
+      const rr = r - k * 22;
+      if (rr > 4 && rr < 130) {
+        fill(cxp - rr, cyp - rr, rr * 2, 1, k % 2 ? BRED : BYELLOW);
+        fill(cxp - rr, cyp + rr, rr * 2, 1, k % 2 ? BRED : BYELLOW);
+        fill(cxp - rr, cyp - rr, 1, rr * 2, k % 2 ? BRED : BYELLOW);
+        fill(cxp + rr, cyp - rr, 1, rr * 2, k % 2 ? BRED : BYELLOW);
+      }
+    }
+  }
+  const flashing = t < 700 && ((t / 90) | 0) % 2 === 0;
+  drawMark(SX + 128 - 40, SY + 36, w, flashing ? BWHITE : F.lit, 5);
+  const shown = t < 700 ? 0 : Math.min(id.length, Math.floor((t - 700) / 60) + 1);
+  if (shown) text(SX + Math.round((SW - id.length * 16) / 2), SY + 126, id.substr(0, shown), F.lit, undefined, 2);
+  if (shown >= id.length) {
+    centre(SY + 150, F.name + "   " + knownCount() + "/" + WORDS.length + " KNOWN", CYAN);
+    centre(SY + 164, "UNPAINTED. PAINT IT ON A WALL", WHITE);
+    centre(SY + 174, "OR IT DIES WITH YOU.", WHITE);
+    if (performance.now() < revealLock) centre(SY + 186, "...", CYAN);
+    else if (((t / 400) | 0) % 2 === 0)
+      centre(SY + 186, S.reveal.length > 1 ? (S.reveal.length - 1) + " MORE WAITING" : "TAP TO GO ON", BWHITE);
+  }
+  versionStamp(WHITE);
+}
+function dismissReveal() {
+  if (performance.now() < revealLock) return;      // it stays up long enough to read
+  SFX.select();
+  S.reveal.shift();
+  revealT0 = 0;
+  if (S.reveal.length) { revealLock = performance.now() + 1400; SFX.word(); requestAnimationFrame(revealFrame); return; }
+  mode = returnMode;
+  if (mode !== "wall") cv.classList.remove("zoom");
+  render();
+}
+
+/* ---- death ---- */
+function drawDeath() {
+  border(BLACK); cls(BLACK);
+  centre(SY + 12, S.name + " IS DEAD", BRED);
+  centre(SY + 26, S.deathWhy, WHITE);
+  centre(SY + 42, "AGE " + S.age + "   GENERATION " + S.gen, CYAN);
+  sprite(SX + 120, SY + 54, "bones", BWHITE);
+  fill(SX + 16, SY + 78, SW - 32, 1, BLUE);
+  const unpainted = Object.keys(S.known).filter(id => !S.painted[id]);
+  if (S.heir) {
+    const saved = unpainted.filter(id => S.heir.words.includes(id)).length;
+    centre(SY + 88, "A CHILD LIVES.", BGREEN);
+    centre(SY + 102, paintedCount() + " WORDS ARE ON THE WALLS.", BWHITE);
+    centre(SY + 116, saved + " MORE THE CHILD SAW YOU FIND.", BWHITE);
+    centre(SY + 130, (unpainted.length - saved) + " GO WITH YOU INTO THE DARK.", unpainted.length - saved ? BRED : WHITE);
+    centre(SY + 156, "TAP TO TAKE UP THE LINE", BWHITE);
+  } else {
+    centre(SY + 92, "NO CHILD OUTLIVES YOU.", BRED);
+    centre(SY + 108, "THE LINE ENDS HERE.", WHITE);
+    centre(SY + 140, "TAP", BWHITE);
+  }
+  versionStamp(WHITE);
+}
+function drawOver() {
+  border(BLACK); cls(BLACK);
+  centre(SY + 20, "THE LINE IS ENDED", BRED);
+  centre(SY + 40, "THE CAVES FILL WITH SILT.", WHITE);
+  centre(SY + 54, "THE PAINT FADES OFF THE ROCK.", WHITE);
+  fill(SX + 24, SY + 74, SW - 48, 1, BLUE);
+  centre(SY + 86, paintedCount() + " OF " + WORDS.length + " WORDS PAINTED", BYELLOW);
+  centre(SY + 102, "GENERATIONS " + S.gen + "   CAVES " + Object.keys(S.visited).length, CYAN);
+  centre(SY + 122, "BEST EVER " + best, BWHITE);
+  centre(SY + 156, "TAP TO BEGIN A NEW LINE", BWHITE);
+  versionStamp(WHITE);
+}
+
+/* ---------------- title ---------------- */
+function drawTitle() {
+  border(BLACK);
+  blitTitle(1e9, 1e9);
+  flush();
+}
+
+/* Title image is built in the true Spectrum model: a 256x192 bitmap
+   plus one ink/paper attribute per 8x8 cell, so it can be revealed in
+   authentic tape-loading order. */
+const titleBits = new Uint8Array(SW * SH);
+const titleAttr = new Array(32 * 24);
+function buildTitle() {
+  for (let i = 0; i < titleAttr.length; i++) titleAttr[i] = { ink: WHITE, paper: BLACK };
+  const set = (x, y) => { if (x >= 0 && y >= 0 && x < SW && y < SH) titleBits[y * SW + x] = 1; };
+  const at = (cx, cy, ink, paper) => {
+    if (cx < 0 || cy < 0 || cx > 31 || cy > 23) return;
+    titleAttr[cy * 32 + cx] = { ink: ink, paper: paper === undefined ? BLACK : paper };
+  };
+  const attrBox = (cx, cy, cw, ch, ink, paper) => {
+    for (let y = cy; y < cy + ch; y++) for (let x = cx; x < cx + cw; x++) at(x, y, ink, paper);
+  };
+
+  // cave mouth arch
+  for (let y = 0; y < SH; y++) {
+    for (let x = 0; x < SW; x++) {
+      const cxp = 128, cyp = 200;
+      const dx = (x - cxp) / 108, dy = (y - cyp) / 168;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const jag = 0.03 * Math.sin(x * 0.35) + 0.02 * Math.sin(y * 0.5 + 1.2);
+      if (d > 1 + jag && y > 26) {
+        if (((x * 3 + y * 5) % 7) < 4) set(x, y);
+      }
+    }
+  }
+  attrBox(0, 3, 32, 21, BLUE, BLACK);
+
+  // hand stencils on the rock
+  const handAt = (hx, hy) => {
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 10; x++) {
+      const inPalm = (y > 5 && x > 1 && x < 8);
+      const inFinger = (y <= 6) && ([1, 3, 5, 7].includes(x));
+      if (inPalm || inFinger) set(hx + x, hy + y);
+    }
+  };
+  handAt(18, 120); handAt(226, 132);
+  attrBox(2, 15, 2, 2, BRED, BLACK);
+  attrBox(28, 16, 2, 2, BRED, BLACK);
+
+  // small figure in the mouth
+  const s = SPR.man;
+  for (let r = 0; r < 16; r++) for (let c = 0; c < 16; c++) if (s[r][c] === "#") set(120 + c, 152 + r);
+  attrBox(15, 19, 2, 2, BYELLOW, BLACK);
+
+  const clearBox = (x, y, w, h) => {
+    for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++)
+      if (i >= 0 && j >= 0 && i < SW && j < SH) titleBits[j * SW + i] = 0;
+  };
+
+  // title lettering
+  const stampText = (x, y, str, scale) => {
+    str = str.toUpperCase();
+    for (let i = 0; i < str.length; i++) {
+      const g = FONTBYTES[str[i]] || FONTBYTES["?"];
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+        if ((g[r] >> (7 - c)) & 1) {
+          for (let a = 0; a < scale; a++) for (let b = 0; b < scale; b++)
+            set(x + i * 8 * scale + c * scale + a, y + r * scale + b);
+        }
+      }
+    }
+  };
+  clearBox(44, 21, 128, 30);
+  stampText(48, 24, "BLOOD", 3);
+  clearBox(76, 49, 104, 30);
+  stampText(80, 52, "LINE", 3);
+  attrBox(0, 2, 32, 4, BRED, BLACK);
+  attrBox(0, 6, 32, 4, BWHITE, BLACK);
+
+  clearBox(44, 89, 172, 26);
+  stampText(60, 92, "A CAVE. NO WORDS.", 1);
+  stampText(52, 104, "MAKE. PAINT. BREED.", 1);
+  attrBox(0, 11, 32, 3, BCYAN, BLACK);
+
+  clearBox(36, 166, 168, 24);
+  stampText(40, 168, "TAP OR PRESS ANY KEY", 1);
+  stampText(84, 180, "S77FFY  V" + VERSION, 1);
+  attrBox(3, 21, 26, 1, BWHITE, BLACK);
+  attrBox(3, 22, 26, 2, WHITE, BLACK);
+}
+/* reveal: nlines of pixel data (spectrum order), ncells of attributes */
+const SPECTRUM_ORDER = (() => {
+  const o = [];
+  for (let third = 0; third < 3; third++)
+    for (let line = 0; line < 8; line++)
+      for (let row = 0; row < 8; row++)
+        o.push(third * 64 + row * 8 + line);
+  return o;
+})();
+function blitTitle(nlines, ncells) {
+  cls(BLACK);
+  const shown = new Uint8Array(SH);
+  const lim = Math.min(nlines, SPECTRUM_ORDER.length);
+  for (let i = 0; i < lim; i++) shown[SPECTRUM_ORDER[i]] = 1;
+  for (let y = 0; y < SH; y++) {
+    if (!shown[y]) continue;
+    const cy = y >> 3;
+    for (let x = 0; x < SW; x++) {
+      const cx = x >> 3;
+      const cell = titleAttr[cy * 32 + cx];
+      const loaded = (cy * 32 + cx) < ncells;
+      const ink = loaded ? cell.ink : BWHITE;
+      const paper = loaded ? cell.paper : BLACK;
+      px(SX + x, SY + y, titleBits[y * SW + x] ? ink : paper);
+    }
+  }
+}
+
+/* ---------------- tape loading screen ---------------- */
+let loadT0 = 0;
+const MENU = ["Tape Loader", "128 BASIC", "Calculator", "48 BASIC", "Tape Tester"];
+let menuSel = 0;
+const MENU_TOP = 34, MENU_STEP = 18;
+
+function uiFrame(ts) {
+  if (mode === "menu") draw128();
+  else if (mode === "basic128") drawBasic("(c) 1986 Sinclair Research Ltd", ts);
+  else if (mode === "basic48") drawBasic("(c) 1982 Sinclair Research Ltd", ts);
+  else if (mode === "calc") drawCalc(ts);
+  else if (mode === "tapetest") drawTapeTest(ts);
+  else return;
+  flush();
+  requestAnimationFrame(uiFrame);
+}
+
+function draw128() {
+  border(BLACK); cls(BLACK);
+  rawText(SX + 2, SY + 2, "128", BWHITE);
+  // the diagonal flash across the top right
+  const bands = [BRED, BYELLOW, BGREEN, BCYAN];
+  bands.forEach((col, i) => {
+    for (let y = 0; y < 14; y++) fill(SX + 150 + i * 22 + (14 - y), SY + y, 20, 1, col);
+  });
+  // menu panel
+  const bx = SX + 10, by = SY + 22, bw = SW - 20, bh = 108;
+  fill(bx, by, bw, bh, BWHITE);
+  // the black rule set just inside the panel, as on the real 128 menu
+  fill(bx + 3, by + 3, bw - 6, 1, BLACK); fill(bx + 3, by + bh - 4, bw - 6, 1, BLACK);
+  fill(bx + 3, by + 3, 1, bh - 6, BLACK); fill(bx + bw - 4, by + 3, 1, bh - 6, BLACK);
+  MENU.forEach((item, i) => {
+    const y = SY + MENU_TOP + i * MENU_STEP;
+    if (i === menuSel) {
+      fill(bx + 4, y - 3, bw - 8, 14, BCYAN);
+      rawText(bx + 14, y, item, BLACK, BCYAN);
+    } else {
+      rawText(bx + 14, y, item, BLACK, BWHITE);
+    }
+  });
+  rawCentre(SY + 148, "Tap a line to choose", BWHITE);
+  versionStamp(WHITE);
+}
+
+function drawBasic(copyright, ts) {
+  border(BWHITE); cls(BWHITE);
+  rawCentre(SY + 176, copyright, BLACK, BWHITE);
+  rawText(SX + 2, SY + 184, "0 OK, 0:1", BLACK, BWHITE);
+  if (((ts / 400) | 0) % 2 === 0) fill(SX + 76, SY + 184, 8, 8, BRED);
+  rawCentre(SY + 90, "Press any key", BLACK, BWHITE);
+  versionStamp(BLACK);
+}
+function drawCalc(ts) {
+  border(BWHITE); cls(BWHITE);
+  rawText(SX + 2, SY + 2, "0", BLACK, BWHITE);
+  if (((ts / 400) | 0) % 2 === 0) fill(SX + 10, SY + 2, 8, 8, BRED);
+  rawCentre(SY + 90, "Nothing to count yet.", BLACK, BWHITE);
+  rawCentre(SY + 102, "Press any key", BLACK, BWHITE);
+  versionStamp(BLACK);
+}
+function drawTapeTest(ts) {
+  stripes(ts, false);
+  cls(BLACK);
+  rawCentre(SY + 78, "Tape Tester", BWHITE);
+  rawCentre(SY + 98, "Signal found.", BGREEN);
+  rawCentre(SY + 118, "Press any key", BWHITE);
+  versionStamp(WHITE);
+}
+
+function menuMove(d) {
+  menuSel = (menuSel + d + MENU.length) % MENU.length;
+  SFX.select();
+}
+function menuChoose() {
+  audioInit();
+  if (menuSel === 0) { SFX.select(); mode = "load"; loadT0 = 0; requestAnimationFrame(loadFrame); return; }
+  SFX.select();
+  mode = ["", "basic128", "calc", "basic48", "tapetest"][menuSel];
+  if (mode === "tapetest") { tapeStart(); tapeFreq(1200); setTimeout(tapeStop, 1800); }
+  requestAnimationFrame(uiFrame);
+}
+const LOAD_END = 8200;
+function loadFrame(ts) {
+  if (!loadT0) loadT0 = ts;
+  const t = ts - loadT0;
+
+  if (t >= 1300 && !tapeOn) tapeStart();
+  if (t >= 1400 && t < 2600) tapeFreq(807);
+  else if (t >= 2600 && t < LOAD_END) tapeFreq(900 + Math.random() * 1500);
+
+  if (t < 1400) {
+    border(BLACK); cls(BLACK);
+    tc(0, 0, "LOAD \"\"", BWHITE);
+    if (((t / 350) | 0) % 2 === 0) fill(SX + 56, SY + 0, 8, 8, BWHITE);
+  } else if (t < 2600) {
+    stripes(t, true);
+    cls(BLACK);
+    tc(0, 0, "LOAD \"\"", BWHITE);
+    tc(0, 2, "PROGRAM: BLOODLINE", BWHITE);
+  } else if (t < 7000) {
+    stripes(t, false);
+    const p = (t - 2600) / 4400;
+    blitTitle(Math.floor(p * 192), 0);
+  } else if (t < LOAD_END) {
+    stripes(t, false);
+    const p = (t - 7000) / 1200;
+    blitTitle(192, Math.floor(p * 768));
+  } else {
+    finishLoad(); return;
+  }
+  flush();
+  requestAnimationFrame(loadFrame);
+}
+function stripes(t, pilot) {
+  const a = pilot ? RED : BLUE, b = pilot ? CYAN : YELLOW;
+  const off = (t / 12) | 0;
+  for (let y = 0; y < H; y++) {
+    const n = ((y + off) * 2654435761) >>> 0;
+    const h = pilot ? 3 : 1 + (n % 4);
+    const c = (((y + off) / h) | 0) % 2 ? a : b;
+    fill(0, y, W, 1, c);
+  }
+}
+function finishLoad() {
+  tapeStop();
+  SFX.fanfare();
+  border(BLACK);
+  mode = "title";
+  drawTitle();
+}
+
+/* ==================================================================
+   INPUT
+   ================================================================== */
+function press(k) {
+  if (k === "sound") { toggleSound(); return; }
+
+  if (mode === "menu") {
+    if (k === "up") { menuMove(-1); return; }
+    if (k === "down") { menuMove(1); return; }
+    menuChoose(); return;
+  }
+  if (mode === "basic128" || mode === "basic48" || mode === "calc" || mode === "tapetest") {
+    tapeStop(); SFX.select(); mode = "menu"; requestAnimationFrame(uiFrame); return;
+  }
+  if (mode === "load") { tapeStop(); loadT0 = performance.now() - LOAD_END; finishLoad(); return; }
+  if (mode === "title") { SFX.select(); newRun(); return; }
+  if (mode === "reveal") { dismissReveal(); return; }
+  if (mode === "over") { SFX.select(); newRun(); return; }
+  if (mode === "death") { SFX.select(); nextLife(); return; }
+
+  if (mode === "craft") {
+    if (k === "words" || k === "map") { SFX.select(); craft.a = null; mode = "play"; render(); return; }
+    if (k === "eat") { dropSelected(); return; }
+    const n = craftItems().length;
+    if (!n) { mode = "play"; render(); return; }
+    const cols = 6;
+    if (k === "left") { craft.sel = (craft.sel + n - 1) % n; SFX.step(); render(); return; }
+    if (k === "right") { craft.sel = (craft.sel + 1) % n; SFX.step(); render(); return; }
+    if (k === "up") { craft.sel = (craft.sel + n - cols + (n % cols ? 0 : 0)) % n; SFX.step(); render(); return; }
+    if (k === "down") { craft.sel = (craft.sel + cols) % n; SFX.step(); render(); return; }
+    if (k === "wait" || k === "make") { craftPick(craft.sel); return; }
+    return;
+  }
+  if (mode === "wall") {
+    if (k === "make") {
+      if (!has("PIGMENT")) { SFX.block(); return; }
+      if (!paintable().length) { SFX.block(); return; }
+      SFX.select(); paintPick = 0; mode = "paint"; render(); return;
+    }
+    SFX.select(); closeWall(); return;
+  }
+  if (mode === "paint") {
+    const list = paintable();
+    if (k === "up") { paintPick = (paintPick + list.length - 1) % list.length; SFX.step(); render(); return; }
+    if (k === "down") { paintPick = (paintPick + 1) % list.length; SFX.step(); render(); return; }
+    if (k === "wait" || k === "make") { doPaint(list[paintPick]); return; }
+    if (k === "map") { SFX.select(); closeWall(); return; }
+    SFX.select(); mode = "wall"; render(); return;
+  }
+  if (mode === "lex") {
+    if (k === "left" || k === "up") { lexFam = (lexFam + 5) % 6; SFX.step(); render(); return; }
+    if (k === "right" || k === "down") { lexFam = (lexFam + 1) % 6; SFX.step(); render(); return; }
+    SFX.select(); mode = "play"; render(); return;
+  }
+  if (mode === "map") { SFX.select(); mode = "play"; render(); return; }
+
+  if (mode !== "play") return;
+  switch (k) {
+    case "up": move(0, -1); break;
+    case "down": move(0, 1); break;
+    case "left": move(-1, 0); break;
+    case "right": move(1, 0); break;
+    case "wait": rest(); break;
+    case "eat": eat(); break;
+    case "make": openCraft(); break;
+    case "words": SFX.select(); mode = "lex"; render(); break;
+    case "map": SFX.select(); mode = "map"; render(); break;
+  }
+}
+
+function openCraft() {
+  const st = stationHere();
+  if (!S.pack.length) { SFX.block(); say("YOUR HANDS ARE EMPTY.", st ? "" : "STAND AT STONE, FIRE OR WATER."); render(); return; }
+  SFX.select();
+  craft.a = null; craft.sel = 0;
+  mode = "craft"; render();
+}
+function craftPick(i) {
+  const items = craftItems();
+  if (i < 0 || i >= items.length) return;
+  if (!stationHere()) { SFX.block(); say("NO PLACE TO WORK HERE.", "PRESS E TO DROP SOMETHING."); render(); return; }
+  if (craft.a === null) { craft.a = i; SFX.select(); render(); return; }
+  const A = items[craft.a];
+  if (craft.a === i) {
+    if (A.count >= 2) { craft.a = null; attempt(A.id, A.id, false, false); return; }
+    craft.a = null; SFX.block(); render(); return;
+  }
+  const B = items[i];
+  craft.a = null;
+  attempt(A.id, B.id, A.virtual, B.virtual);
+}
+function dropSelected() {
+  const items = craftItems();
+  const it = items[craft.sel];
+  if (!it || it.virtual) { SFX.block(); return; }
+  consume(it.id);
+  craft.a = null;
+  // stay on the same thing if any is left, otherwise step back a slot
+  const after = craftItems();
+  let idx = after.findIndex(x => x.id === it.id && !x.virtual);
+  if (idx < 0) idx = Math.max(0, craft.sel - 1);
+  craft.sel = Math.min(idx, Math.max(0, after.length - 1));
+  SFX.block(); say("YOU PUT THE " + it.id + " DOWN.", "");
+  if (!S.pack.length) { mode = "play"; }
+  render();
+}
+function closeWall() {
+  wallOpen = null;
+  cv.classList.remove("zoom");
+  mode = "play";
+  render();
+}
+function doPaint(id) {
+  if (!id) return;
+  if (!has("PIGMENT")) { SFX.block(); say("NO PIGMENT LEFT.", ""); mode = "wall"; render(); return; }
+  consume("PIGMENT");
+  paintWord(id);
+  SFX.craft();
+  say(id + " IS ON THE WALL NOW.", "IT WILL OUTLIVE YOU.");
+  tick(4);
+  paintPick = 0;
+  if (mode === "paint") { mode = "wall"; render(); }
+}
+
+document.getElementById("pad").addEventListener("click", e => {
+  const b = e.target.closest("button[data-k]");
+  if (b) press(b.dataset.k);
+});
+window.addEventListener("keydown", e => {
+  const map = {
+    ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+    w: "up", s: "down", a: "left", d: "right",
+    "7": "up", "6": "down", "5": "left", "8": "right",
+    e: "eat", m: "make", l: "words", n: "map", b: "sound", " ": "wait", Enter: "wait"
+  };
+  const k = map[e.key] || map[String(e.key).toLowerCase()];
+  if (mode !== "play") { e.preventDefault(); press(k || "any"); return; }
+  if (k) { e.preventDefault(); press(k); }
+});
+
+/* tap and swipe */
+let tsx = 0, tsy = 0, tst = 0, lastTouch = 0;
+function canvasXY(clientX, clientY) {
+  const r = cv.getBoundingClientRect();
+  return [(clientX - r.left) / r.width * W, (clientY - r.top) / r.height * H];
+}
+function menuHit(cy) {
+  for (let i = 0; i < MENU.length; i++) {
+    const y = SY + MENU_TOP + i * MENU_STEP;
+    if (cy >= y - 5 && cy < y + 13) return i;
+  }
+  return -1;
+}
+function tapAt(clientX, clientY) {
+  const pt = canvasXY(clientX, clientY);
+  if (mode === "menu") {
+    const hit = menuHit(pt[1]);
+    if (hit >= 0 && hit !== menuSel) { menuSel = hit; SFX.select(); draw128(); flush(); return; }
+    menuChoose(); return;
+  }
+  if (mode === "craft") {
+    const items = craftItems();
+    for (let i = 0; i < items.length; i++) {
+      const c = craftCell(i);
+      if (pt[0] >= c[0] - 4 && pt[0] < c[0] + 36 && pt[1] >= c[1] - 4 && pt[1] < c[1] + 42) { craft.sel = i; craftPick(i); return; }
+    }
+    press("words"); return;
+  }
+  if (mode === "paint") {
+    const list = paintable();
+    const start = Math.max(0, Math.min(paintPick - 3, list.length - 7));
+    for (let i = 0; i < 7 && start + i < list.length; i++) {
+      const y = SY + 26 + i * 20;
+      if (pt[1] >= y - 2 && pt[1] < y + 18) {
+        if (paintPick === start + i) doPaint(list[paintPick]);
+        else { paintPick = start + i; SFX.step(); render(); }
+        return;
+      }
+    }
+    press("words"); return;
+  }
+  if (mode !== "play") press("any");
+}
+cv.addEventListener("touchstart", e => {
+  const t = e.changedTouches[0]; tsx = t.clientX; tsy = t.clientY; tst = Date.now();
+}, { passive: true });
+cv.addEventListener("touchend", e => {
+  const t = e.changedTouches[0];
+  const dx = t.clientX - tsx, dy = t.clientY - tsy;
+  const dist = Math.hypot(dx, dy);
+  lastTouch = Date.now();
+  if (dist < 24 || Date.now() - tst > 700) { tapAt(t.clientX, t.clientY); return; }
+  if (Math.abs(dx) > Math.abs(dy)) press(dx > 0 ? "right" : "left");
+  else press(dy > 0 ? "down" : "up");
+}, { passive: true });
+cv.addEventListener("click", e => {
+  if (Date.now() - lastTouch < 600) return;
+  tapAt(e.clientX, e.clientY);
+});
+
+/* ==================================================================
+   BOOT
+   ================================================================== */
+buildMarks();
+buildTitle();
+mode = "menu";
+requestAnimationFrame(uiFrame);
+
+</script>
+</body>
+</html>
