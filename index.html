@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.5">
+<meta name="app-version" content="2.0.7">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -109,13 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.5
+   BLOODLINE  v2.0.7
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.5";
+const VERSION = "2.0.7";
 
 
 /* ---------------- beeper ----------------
@@ -715,7 +715,7 @@ function newState() {
     gen: 1, name: pickName(),
     turn: 0, age: 14, lifespan: 34 + (Math.random() * 9 | 0),
     food: 90, health: 100,
-    pack: [], packMax: 12, stackMax: 9,
+    pack: [], packBase: 10, stackMax: 9,
     known: {}, seen: {}, painted: {},
     kids: [], mate: false, lastBirth: -50,
     caves: {}, at: 0,
@@ -1002,25 +1002,31 @@ function noteTaken(ids) {
 }
 function has(id, n) { return S.pack.filter(x => x === id).length >= (n || 1); }
 function countOf(id) { return S.pack.filter(x => x === id).length; }
+/* every mouth at the fire is also a pair of hands */
+function packCap() { return S.packBase + 2 * ((S.mate ? 1 : 0) + S.kids.filter(k => k.alive).length); }
 function kinds() { return new Set(S.pack).size; }
 function consume(id) { const i = S.pack.indexOf(id); if (i >= 0) S.pack.splice(i, 1); }
 /* one slot per kind, nine deep. FULL means the slot is capped;
    NOROOM means you are carrying too many different things. */
-function give(id, n) {
+function give(id, n, force) {
   n = n || 1;
   let got = 0;
   for (let i = 0; i < n; i++) {
-    const have = countOf(id);
-    if (have === 0 && kinds() >= S.packMax) break;
-    if (have >= S.stackMax) break;
+    if (!force) {
+      const have = countOf(id);
+      if (have === 0 && kinds() >= packCap()) break;
+      if (have >= S.stackMax) break;
+    }
     S.pack.push(id); got++;
   }
   if (kinds() >= 8) earn("COUNT");
   return got;
 }
+function overloaded() { return kinds() > packCap(); }
 function giveStatus(id) {
+  if (overloaded()) return "NOROOM";
   if (countOf(id) >= S.stackMax) return "FULL";
-  if (countOf(id) === 0 && kinds() >= S.packMax) return "NOROOM";
+  if (countOf(id) === 0 && kinds() >= packCap()) return "NOROOM";
   return "OK";
 }
 
@@ -1038,7 +1044,7 @@ function move(dx, dy) {
   S.px = nx; S.py = ny;
   SFX.step();
   if (t === T.POOL) { S.food = Math.min(100, S.food + 2); if (S.food < 20) earn("THIRST"); }
-  if (t === T.HEARTH) { if (storeAtHearth()) return; }
+  if (t === T.HEARTH && cave().hearth && nx === cave().hearth[0] && ny === cave().hearth[1]) { comeHome(); return; }
   tick(); step();
 }
 function step() { if (mode === "play") render(); }
@@ -1048,7 +1054,7 @@ function gather(x, y, e) {
   if (k === "GAME") {
     if (has("BOW") || has("AXE") || has("KNIFE")) {
       const spoils = ["MEAT", "MEAT", "HIDE", "BONE", "SINEW", "FAT", Math.random() < 0.4 ? "HORN" : "FEATHER"];
-      spoils.forEach(id => give(id));
+      spoils.forEach(id => give(id, 1, true));
       SFX.kill(); say("YOU BRING IT DOWN AND STRIP IT.", noteTaken(spoils));
       e.ready = S.turn + 90;
       tick(3);
@@ -1061,7 +1067,7 @@ function gather(x, y, e) {
   } else if (k === "BEAST") {
     if (has("BOW") || has("AXE")) {
       const spoils = ["MEAT", "MEAT", "HIDE", "HORN"];
-      spoils.forEach(id => give(id));
+      spoils.forEach(id => give(id, 1, true));
       SFX.kill(); say("YOU DRIVE IT OFF THE LEDGE.", noteTaken(spoils));
       cave().ent[y * MW + x] = null;
       tick(3);
@@ -1088,7 +1094,9 @@ function gather(x, y, e) {
     const n = 2 + (Math.random() * 2 | 0);
     const why = giveStatus(k);
     if (why === "NOROOM") {
-      SFX.block(); say("TOO MANY DIFFERENT THINGS.", "PRESS M, THEN E TO PUT ONE DOWN.");
+      SFX.block();
+      say(overloaded() ? "YOU ARE LOADED PAST YOUR HANDS." : "TOO MANY DIFFERENT THINGS.",
+          "MAKE ROOM AT THE FIRE OR PUT ONE DOWN.");
       render(); return;
     }
     const got = give(k, n);
@@ -1161,10 +1169,10 @@ function attempt(a, b, va, vb) {
   if (!st) { SFX.block(); say("NOTHING HERE TO WORK WITH.", ""); mode = "play"; render(); return; }
   const hit = recipeFor(a, b, st);
   const near = recipeAnywhere(a, b);
-  if (!va) consume(a);
-  if (!vb) consume(b);
 
   if (hit) {
+    if (!va) consume(a);
+    if (!vb) consume(b);
     if (hit.id === "FIRE") { lightHearth(); }
     else if (hit.id === "KILN") { buildKiln(); }
     else if (hit.id === "WELL" || hit.id === "CHANNEL") { digWater(); }
@@ -1182,24 +1190,28 @@ function attempt(a, b, va, vb) {
   // failure — the cost comes from what you were handling, not what you wanted
   if (!S.tried) S.tried = {};
   S.tried[triedKey(st, a, b)] = true;
-  const spent = [];
-  if (!va) spent.push(a);
-  if (!vb) spent.push(b);
-  const gone = spent.length ? spent.join(" AND ") + " GONE" : "NOTHING SPENT";
   const danger = Math.max(WBY[a].danger, WBY[b].danger) + ((st === "fire" || st === "kiln") ? 1 : 0);
-  let line = near ? "IT HISSES AND GOES BLACK. WRONG PLACE." : "IT WILL NOT JOIN.";
-  let line2 = gone;
+  let line = near ? "NO EFFECT. WRONG PLACE FOR THIS." : "NO EFFECT. THEY WILL NOT JOIN.";
+  let line2 = "YOU STILL HAVE BOTH.";
   if (danger >= 3) {
     SFX.hurt();
     if (Math.random() < 0.3) { rasp(0.5, 0, 60, 900); die("THE MIXTURE TAKES YOUR HANDS AND FACE."); return; }
+    if (!va) consume(a);
+    if (!vb) consume(b);
     hurt(34, "THE BLAST FINISHES YOU.");
     line = "IT GOES UP IN YOUR FACE. BADLY BURNED.";
+    line2 = "THE STUFF IS GONE.";
   } else if (danger === 2) {
-    SFX.hurt(); hurt(20, "IT POISONS YOU THROUGH.");
-    line = "IT BURNS WHERE IT TOUCHED YOU.";
+    SFX.hurt();
+    if (!va) consume(a);
+    if (!vb) consume(b);
+    hurt(20, "IT POISONS YOU THROUGH.");
+    line = "IT SPOILS AND BURNS YOU.";
+    line2 = "THE STUFF IS GONE.";
   } else if (danger === 1) {
     SFX.hurt(); hurt(8);
-    line = near ? "WRONG PLACE, AND IT CUTS YOU." : "IT WILL NOT JOIN. IT CUTS YOU.";
+    line = near ? "WRONG PLACE. IT CUTS YOU." : "NO EFFECT. IT CUTS YOU.";
+    line2 = "YOU STILL HAVE BOTH.";
   } else SFX.block();
   say(line, line2);
   tick(1);
@@ -1264,20 +1276,80 @@ function eat() {
   SFX.block(); say("NOTHING TO EAT IN YOUR HANDS.", ""); render();
 }
 
-function storeAtHearth() {
+/* coming home: half of what you carry goes to the family.
+   food feeds them, the rest goes on the pile by the fire. */
+function comeHome() {
   const c = cave();
-  if (!c.hearth || S.px !== c.hearth[0] || S.py !== c.hearth[1]) return false;
-  let food = 0, kept = [];
-  S.pack.forEach(id => {
-    if (FOODVAL[id]) { S.larder += Math.round(FOODVAL[id] / 4); food++; }
-    else kept.push(id);
+  if (!c.stash) c.stash = {};
+  const tally = {};
+  S.pack.forEach(id => tally[id] = (tally[id] || 0) + 1);
+  let fed = 0, laid = 0;
+  Object.keys(tally).forEach(id => {
+    const give_ = Math.floor(tally[id] / 2) || (tally[id] === 1 ? 1 : 0);
+    for (let i = 0; i < give_; i++) {
+      consume(id);
+      if (FOODVAL[id]) { S.larder += Math.max(1, Math.round(FOODVAL[id] / 4)); fed++; }
+      else { c.stash[id] = (c.stash[id] || 0) + 1; laid++; }
+    }
   });
-  if (food) {
-    S.pack = kept;
-    SFX.take(); say("YOU LAY " + food + " THINGS BY THE FIRE.", "LARDER " + S.larder + ".");
-    tick(); render(); return true;
-  }
-  return false;
+  if (fed || laid) SFX.take();
+  homeMsg = (fed ? fed + " FOR THE LARDER" : "") + (fed && laid ? ", " : "") + (laid ? laid + " ON THE PILE" : "");
+  if (!fed && !laid) homeMsg = "YOU CAME HOME EMPTY HANDED";
+  earn("HOME");
+  if (fed && S.kids.some(k => k.alive)) earn("GIFT");
+  homeSel = 0;
+  mode = "home";
+  tick(2);
+  if (mode === "home") render();
+  return true;
+}
+function stashList() {
+  const c = cave();
+  if (!c.stash) return [];
+  return Object.keys(c.stash).filter(id => c.stash[id] > 0)
+    .sort((x, y) => (WBY[x] ? WBY[x].n : 999) - (WBY[y] ? WBY[y].n : 999))
+    .map(id => ({ id, count: c.stash[id] }));
+}
+function takeFromStash(i) {
+  const list = stashList();
+  const it = list[i];
+  if (!it) return;
+  if (giveStatus(it.id) !== "OK") { SFX.block(); say("NO ROOM FOR THAT.", ""); render(); return; }
+  give(it.id, 1);
+  cave().stash[it.id]--;
+  SFX.take();
+  homeSel = Math.min(homeSel, Math.max(0, stashList().length - 1));
+  render();
+}
+function drawHome() {
+  border(BLACK); cls(BLACK);
+  const c = cave();
+  centre(SY + 3, "YOUR FIRE", BYELLOW);
+  fill(SX + 8, SY + 14, SW - 16, 1, BLUE);
+  sprite(SX + 16, SY + 20, "fire", c.hearthLit ? BRED : WHITE, c.hearthLit ? BYELLOW : WHITE);
+  const alive = S.kids.filter(k => k.alive);
+  if (S.mate) sprite(SX + 44, SY + 20, "woman", BMAG);
+  alive.slice(0, 4).forEach((k, i) => sprite(SX + 70 + i * 20, SY + 20, "child", k.health > 50 ? BCYAN : BRED));
+  text(SX + 160, SY + 22, "LARDER " + S.larder, BWHITE);
+  text(SX + 160, SY + 32, "HANDS " + kinds() + "/" + packCap(), BCYAN);
+  tc(0, 6, homeMsg.substr(0, 32), BGREEN);
+  fill(SX + 8, SY + 58, SW - 16, 1, BLUE);
+  centre(SY + 62, "THE PILE BY THE FIRE", MAGENTA);
+  const list = stashList();
+  if (!list.length) centre(SY + 100, "NOTHING HERE YET", WHITE);
+  else list.slice(0, 18).forEach((it, i) => {
+    const col = i % 6, row = (i / 6) | 0;
+    const x = SX + 7 + col * 41, y = SY + 74 + row * 40;
+    const w = WBY[it.id];
+    if (i === homeSel) { fill(x - 3, y - 3, 38, 40, BLUE); }
+    drawMark(x + 2, y, w, FAMS[w.fam].lit, 2);
+    if (it.count > 1) { fill(x + 24, y + 22, 10, 9, BLACK); text(x + 25, y + 23, String(Math.min(9, it.count)), BCYAN); }
+    const nm = it.id.substr(0, 4);
+    text(x + 17 - nm.length * 4, y + 33, nm, i === homeSel ? BYELLOW : WHITE);
+  });
+  fill(SX + 8, SY + 172, SW - 16, 1, BLUE);
+  centre(SY + 178, "SPACE TAKES ONE BACK   L LEAVES", CYAN);
+  versionStamp(WHITE);
 }
 
 function rest() {
@@ -1301,6 +1373,8 @@ let craft = { a: null, page: 0 };
 let lexFam = 0;
 let wallOpen = null;
 let paintPick = 0;
+let homeSel = 0;
+let homeMsg = "";
 
 function versionStamp(col) {
   text(W - 8 * 6 - 4, H - 11, "V" + VERSION, col === undefined ? WHITE : col);
@@ -1324,6 +1398,7 @@ function render() {
   else if (mode === "wall") drawWall();
   else if (mode === "paint") drawPaint();
   else if (mode === "lex") drawLex();
+  else if (mode === "home") drawHome();
   else if (mode === "map") drawMap();
   else if (mode === "death") drawDeath();
   else if (mode === "over") drawOver();
@@ -1338,7 +1413,7 @@ function drawPlay() {
   const c = cave();
   tc(0, 0, (pad("AGE " + S.age, 8) + pad("FOOD " + Math.max(0, S.food | 0), 9) +
             pad("HURT " + Math.max(0, 100 - S.health), 9) + BIOMENAME[c.biome].substr(0, 6)).substr(0, 32), BWHITE);
-  tc(0, 1, (pad("PACK " + kinds() + "/" + S.packMax, 10) + pad("LARDER " + S.larder, 11) +
+  tc(0, 1, (pad("PACK " + kinds() + "/" + packCap(), 10) + pad("LARDER " + S.larder, 11) +
             pad(paintedCount() + "/" + WORDS.length, 8)).substr(0, 32), CYAN);
   fill(SX, SY + 16, SW, 1, BLUE);
 
@@ -1989,6 +2064,13 @@ function press(k) {
     if (k === "right" || k === "down") { lexFam = (lexFam + 1) % 6; SFX.step(); render(); return; }
     SFX.select(); mode = "play"; render(); return;
   }
+  if (mode === "home") {
+    const list = stashList();
+    if (k === "left" || k === "up") { if (list.length) homeSel = (homeSel + list.length - 1) % list.length; SFX.step(); render(); return; }
+    if (k === "right" || k === "down") { if (list.length) homeSel = (homeSel + 1) % list.length; SFX.step(); render(); return; }
+    if (k === "wait" || k === "make") { takeFromStash(homeSel); return; }
+    SFX.select(); mode = "play"; render(); return;
+  }
   if (mode === "map") { SFX.select(); mode = "play"; render(); return; }
 
   if (mode !== "play") return;
@@ -2100,6 +2182,18 @@ function tapAt(clientX, clientY) {
     for (let i = 0; i < items.length; i++) {
       const c = craftCell(i);
       if (pt[0] >= c[0] - 4 && pt[0] < c[0] + 36 && pt[1] >= c[1] - 4 && pt[1] < c[1] + 42) { craft.sel = i; craftPick(i); return; }
+    }
+    press("words"); return;
+  }
+  if (mode === "home") {
+    const list = stashList();
+    for (let i = 0; i < list.length; i++) {
+      const col = i % 6, row = (i / 6) | 0;
+      const x = SX + 7 + col * 41, y = SY + 74 + row * 40;
+      if (pt[0] >= x - 4 && pt[0] < x + 36 && pt[1] >= y - 4 && pt[1] < y + 38) {
+        if (homeSel === i) takeFromStash(i); else { homeSel = i; SFX.step(); render(); }
+        return;
+      }
     }
     press("words"); return;
   }
