@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.7">
+<meta name="app-version" content="2.0.8">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -109,13 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.7
+   BLOODLINE  v2.0.8
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.7";
+const VERSION = "2.0.8";
 
 
 /* ---------------- beeper ----------------
@@ -1336,10 +1336,11 @@ function drawHome() {
   fill(SX + 8, SY + 58, SW - 16, 1, BLUE);
   centre(SY + 62, "THE PILE BY THE FIRE", MAGENTA);
   const list = stashList();
+  const start = pageOf(homeSel) * PER_PAGE;
   if (!list.length) centre(SY + 100, "NOTHING HERE YET", WHITE);
-  else list.slice(0, 18).forEach((it, i) => {
-    const col = i % 6, row = (i / 6) | 0;
-    const x = SX + 7 + col * 41, y = SY + 74 + row * 40;
+  else list.slice(start, start + PER_PAGE).forEach((it, local) => {
+    const i = start + local;
+    const c2 = gridCell(local, SY + 74), x = c2[0], y = c2[1];
     const w = WBY[it.id];
     if (i === homeSel) { fill(x - 3, y - 3, 38, 40, BLUE); }
     drawMark(x + 2, y, w, FAMS[w.fam].lit, 2);
@@ -1347,8 +1348,10 @@ function drawHome() {
     const nm = it.id.substr(0, 4);
     text(x + 17 - nm.length * 4, y + 33, nm, i === homeSel ? BYELLOW : WHITE);
   });
-  fill(SX + 8, SY + 172, SW - 16, 1, BLUE);
-  centre(SY + 178, "SPACE TAKES ONE BACK   L LEAVES", CYAN);
+  fill(SX + 8, SY + 168, SW - 16, 1, BLUE);
+  const pl2 = pageLabel(homeSel, list.length);
+  centre(SY + 174, "SPACE TAKES ONE BACK   L LEAVES", CYAN);
+  if (pl2) centre(SY + 184, pl2, BWHITE);
   versionStamp(WHITE);
 }
 
@@ -1386,7 +1389,6 @@ function render() {
     returnMode = mode === "craft" ? "play" : mode;
     mode = "reveal"; revealT0 = 0;
     revealLock = performance.now() + 1400;
-    cv.classList.add("zoom");
     SFX.word();
     drawReveal(0); flush();
     requestAnimationFrame(revealFrame);
@@ -1509,9 +1511,16 @@ function wasTried(a, b) {
   const st = stationHere();
   return st ? !!(S.tried && S.tried[triedKey(st, a, b)]) : false;
 }
-function craftCell(i) {
-  const col = i % 6, row = (i / 6) | 0;
-  return [SX + 7 + col * 41, SY + 24 + row * 44];
+const PER_PAGE = 12, GRID_COLS = 6;
+function gridCell(local, top) {
+  const col = local % GRID_COLS, row = (local / GRID_COLS) | 0;
+  return [SX + 7 + col * 41, top + row * 44];
+}
+function craftCell(local) { return gridCell(local, SY + 26); }
+function pageOf(sel) { return Math.floor(sel / PER_PAGE); }
+function pageLabel(sel, total) {
+  const pages = Math.max(1, Math.ceil(total / PER_PAGE));
+  return pages > 1 ? "PAGE " + (pageOf(sel) + 1) + "/" + pages : "";
 }
 function drawCraft() {
   border(BLACK); cls(BLACK);
@@ -1519,8 +1528,10 @@ function drawCraft() {
   centre(SY + 3, st ? ("AT THE " + st.toUpperCase()) : "NOWHERE TO WORK", st ? BYELLOW : BRED);
   fill(SX + 8, SY + 14, SW - 16, 1, BLUE);
   const items = craftItems();
-  items.forEach((it, i) => {
-    const c = craftCell(i), x = c[0], y = c[1];
+  const start = pageOf(craft.sel) * PER_PAGE;
+  items.slice(start, start + PER_PAGE).forEach((it, local) => {
+    const i = start + local;
+    const c = craftCell(local), x = c[0], y = c[1];
     const w = WBY[it.id];
     const chosen = (craft.a === i);
     const cursor = (craft.sel === i);
@@ -1543,7 +1554,8 @@ function drawCraft() {
   fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
   if (!st) centre(SY + 164, "NO PLACE TO WORK - YOU CAN DROP", BRED);
   else centre(SY + 164, craft.a === null ? "PICK ONE THING   L CLOSES" : "PICK WHAT GOES WITH IT   X = TRIED", BWHITE);
-  centre(SY + 176, "CYAN BOX IS THIS PLACE. E DROPS.", CYAN);
+  const pl = pageLabel(craft.sel, items.length);
+  centre(SY + 176, pl ? "E DROPS.   " + pl : "CYAN BOX IS THIS PLACE. E DROPS.", CYAN);
   versionStamp(WHITE);
 }
 
@@ -1721,7 +1733,6 @@ function dismissReveal() {
   revealT0 = 0;
   if (S.reveal.length) { revealLock = performance.now() + 1400; SFX.word(); requestAnimationFrame(revealFrame); return; }
   mode = returnMode;
-  if (mode !== "wall") cv.classList.remove("zoom");
   render();
 }
 
@@ -2065,9 +2076,13 @@ function press(k) {
     SFX.select(); mode = "play"; render(); return;
   }
   if (mode === "home") {
-    const list = stashList();
-    if (k === "left" || k === "up") { if (list.length) homeSel = (homeSel + list.length - 1) % list.length; SFX.step(); render(); return; }
-    if (k === "right" || k === "down") { if (list.length) homeSel = (homeSel + 1) % list.length; SFX.step(); render(); return; }
+    const n = stashList().length;
+    if (n) {
+      if (k === "left") { homeSel = (homeSel + n - 1) % n; SFX.step(); render(); return; }
+      if (k === "right") { homeSel = (homeSel + 1) % n; SFX.step(); render(); return; }
+      if (k === "up") { homeSel = (homeSel + n - GRID_COLS) % n; SFX.step(); render(); return; }
+      if (k === "down") { homeSel = (homeSel + GRID_COLS) % n; SFX.step(); render(); return; }
+    }
     if (k === "wait" || k === "make") { takeFromStash(homeSel); return; }
     SFX.select(); mode = "play"; render(); return;
   }
@@ -2179,18 +2194,21 @@ function tapAt(clientX, clientY) {
   }
   if (mode === "craft") {
     const items = craftItems();
-    for (let i = 0; i < items.length; i++) {
-      const c = craftCell(i);
+    const start = pageOf(craft.sel) * PER_PAGE;
+    for (let local = 0; local < PER_PAGE && start + local < items.length; local++) {
+      const i = start + local;
+      const c = craftCell(local);
       if (pt[0] >= c[0] - 4 && pt[0] < c[0] + 36 && pt[1] >= c[1] - 4 && pt[1] < c[1] + 42) { craft.sel = i; craftPick(i); return; }
     }
     press("words"); return;
   }
   if (mode === "home") {
     const list = stashList();
-    for (let i = 0; i < list.length; i++) {
-      const col = i % 6, row = (i / 6) | 0;
-      const x = SX + 7 + col * 41, y = SY + 74 + row * 40;
-      if (pt[0] >= x - 4 && pt[0] < x + 36 && pt[1] >= y - 4 && pt[1] < y + 38) {
+    const start = pageOf(homeSel) * PER_PAGE;
+    for (let local = 0; local < PER_PAGE && start + local < list.length; local++) {
+      const i = start + local;
+      const c2 = gridCell(local, SY + 74);
+      if (pt[0] >= c2[0] - 4 && pt[0] < c2[0] + 36 && pt[1] >= c2[1] - 4 && pt[1] < c2[1] + 38) {
         if (homeSel === i) takeFromStash(i); else { homeSel = i; SFX.step(); render(); }
         return;
       }
