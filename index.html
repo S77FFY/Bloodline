@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.8">
+<meta name="app-version" content="2.0.12">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -109,13 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.8
+   BLOODLINE  v2.0.12
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.8";
+const VERSION = "2.0.12";
 
 
 /* ---------------- beeper ----------------
@@ -401,6 +401,11 @@ beast: [
 "##############..","################","##.##########.##","##.##########.##",
 "################","#####.####.#####","################","..############..",
 "..##..####..##..","..##..####..##..",".###..####..###.","................"],
+basket: [
+"................","................",".##############.",".#.#.#.#.#.#.#.#",
+".##############.",".#..#..#..#..#..","..############..","..#.#.#.#.#.#...",
+"..############..","...#..#..#..#...","...##########...","...#.#.#.#.#....",
+"...##########...","....########....","................","................"],
 exit: [
 "################","#####......#####","####........####","###..........###",
 "##............##","##............##","##............##","##............##",
@@ -520,11 +525,11 @@ made("PITCH", "flame", 3, "RESIN", "CHARCOAL", "fire", 1);
 made("TAR", "flame", 4, "PITCH", "WATER", "fire", 2);
 made("TORCH", "flame", 3, "SHAFT", "PITCH", "fire", 1);
 made("BEACON", "flame", 4, "TORCH", "FIRE", "fire", 1);
-made("FORGE", "flame", 5, "KILN", "CHARCOAL", "kiln", 2);
-made("COPPER", "flame", 5, "ORE", "CHARCOAL", "kiln", 2);
-made("TIN", "flame", 5, "ORE", "ASH", "kiln", 2);
-made("BRONZE", "flame", 5, "COPPER", "TIN", "kiln", 2);
-made("CHISEL", "flame", 6, "BRONZE", "HAMMER", "kiln", 2);
+made("FORGE", "flame", 5, "BRICK", "CHARCOAL", "kiln", 2);
+made("COPPER", "flame", 5, "ORE", "CHARCOAL", "forge", 2);
+made("TIN", "flame", 5, "ORE", "ASH", "forge", 2);
+made("BRONZE", "flame", 5, "COPPER", "TIN", "forge", 2);
+made("CHISEL", "flame", 6, "BRONZE", "HAMMER", "forge", 2);
 made("SALTPETRE", "flame", 5, "ASH", "SALT", "water", 2);
 made("POWDER", "flame", 6, "SALTPETRE", "SULPHUR", "stone", 3);
 made("FUSE", "flame", 6, "CORD", "POWDER", "stone", 3);
@@ -685,7 +690,7 @@ function drawMark(x, y, w, ink, scale) {
 /* ==================================================================
    WORLD
    ================================================================== */
-const T = { FLOOR: 0, WALL: 1, POOL: 2, SLAB: 3, HEARTH: 4, KILN: 5, WALLART: 6, EXIT: 7, RUBBLE: 8 };
+const T = { FLOOR: 0, WALL: 1, POOL: 2, SLAB: 3, HEARTH: 4, KILN: 5, WALLART: 6, EXIT: 7, RUBBLE: 8, BASKET: 9, FORGE: 10 };
 const MW = 16, MH = 9, TS = 16;
 const GW = 5, GH = 5;
 const BIOMES = ["mouth", "wet", "dry", "chalk", "deep"];
@@ -1044,7 +1049,21 @@ function move(dx, dy) {
   S.px = nx; S.py = ny;
   SFX.step();
   if (t === T.POOL) { S.food = Math.min(100, S.food + 2); if (S.food < 20) earn("THIRST"); }
-  if (t === T.HEARTH && cave().hearth && nx === cave().hearth[0] && ny === cave().hearth[1]) { comeHome(); return; }
+  if (t === T.BASKET) { openBasket(); return; }
+  if (t === T.HEARTH) {
+    const c = cave();
+    if (!c.basket && has("BASKET")) {
+      const at = placeNear(T.BASKET);
+      if (at) {
+        consume("BASKET"); c.basket = at; if (!c.stash) c.stash = {};
+        SFX.take(); say("YOU SET THE BASKET BY THE FIRE.", "LEAVE WHAT YOU CARRY IN IT.");
+        tick(2); if (mode === "play") render();
+        return;
+      }
+    }
+    say(c.hearthLit ? "YOUR FIRE BURNS HERE." : "COLD ASHES.",
+        c.basket ? "" : "A BASKET WOULD HOLD YOUR THINGS.");
+  }
   tick(); step();
 }
 function step() { if (mode === "play") render(); }
@@ -1093,6 +1112,16 @@ function gather(x, y, e) {
   } else {
     const n = 2 + (Math.random() * 2 | 0);
     const why = giveStatus(k);
+    if (why !== "OK" && FOODVAL[k]) {
+      S.food = Math.min(100, S.food + FOODVAL[k]);
+      SFX.eat();
+      const note = noteTaken([k]);
+      say("YOU EAT THE " + k + " HERE.", note || "NO ROOM TO CARRY IT.");
+      e.ready = S.turn + 55;
+      tick();
+      if (mode === "play") render();
+      return;
+    }
     if (why === "NOROOM") {
       SFX.block();
       say(overloaded() ? "YOU ARE LOADED PAST YOUR HANDS." : "TOO MANY DIFFERENT THINGS.",
@@ -1145,9 +1174,11 @@ function travel(x, y) {
 /* ==================================================================
    STATIONS AND MAKING
    ================================================================== */
-const STATION_GIVES = { fire: "FIRE", kiln: "FIRE", water: "WATER", stone: "STONE" };
+const STATION_GIVES = { fire: "FIRE", kiln: "FIRE", forge: "FIRE", water: "WATER", stone: "STONE" };
+const STATION_NAME  = { fire: "FIRE", kiln: "KILN", forge: "FORGE", water: "WATER", stone: "STONE" };
 function stationHere() {
   const t = tileAt(S.px, S.py);
+  if (t === T.FORGE) return "forge";
   if (t === T.KILN) return "kiln";
   if (t === T.HEARTH) return cave().hearthLit ? "fire" : null;
   if (t === T.POOL) return "water";
@@ -1175,6 +1206,7 @@ function attempt(a, b, va, vb) {
     if (!vb) consume(b);
     if (hit.id === "FIRE") { lightHearth(); }
     else if (hit.id === "KILN") { buildKiln(); }
+    else if (hit.id === "FORGE") { buildForge(); }
     else if (hit.id === "WELL" || hit.id === "CHANNEL") { digWater(); }
     else give(hit.id);
     const isNew = discover(hit.id);
@@ -1183,8 +1215,14 @@ function attempt(a, b, va, vb) {
     if (!va) used.push(a);
     if (!vb) used.push(b);
     if (!isNew) say("YOU MAKE ANOTHER " + hit.id + ".", used.join(" AND ") + " GONE");
+    else say("YOU MAKE A " + hit.id + ".", used.join(" AND ") + " GONE");
     tick(hit.tier + 1);
-    mode = "play"; render(); return;
+    if (mode === "play" || mode === "craft") {
+      craft.a = null;
+      craft.sel = Math.min(craft.sel, Math.max(0, craftItems().length - 1));
+      mode = stationHere() && S.pack.length ? "craft" : "play";
+    }
+    render(); return;
   }
 
   // failure — the cost comes from what you were handling, not what you wanted
@@ -1215,7 +1253,12 @@ function attempt(a, b, va, vb) {
   } else SFX.block();
   say(line, line2);
   tick(1);
-  if (mode === "play") render();
+  if (mode === "play" || mode === "craft") {
+    craft.a = null;
+    craft.sel = Math.min(craft.sel, Math.max(0, craftItems().length - 1));
+    if (mode === "craft" && (!stationHere() || !S.pack.length)) mode = "play";
+  }
+  render();
 }
 
 function placeNear(tile) {
@@ -1242,6 +1285,11 @@ function buildKiln() {
   const at = placeNear(T.KILN);
   if (at) { cave().kiln = at; SFX.fire(); }
   else say("NO ROOM HERE FOR A KILN.", "");
+}
+function buildForge() {
+  const at = placeNear(T.FORGE);
+  if (at) { cave().forge = at; SFX.fire(); }
+  else say("NO ROOM HERE FOR A FORGE.", "");
 }
 function digWater() {
   if (placeNear(T.POOL)) SFX.drink();
@@ -1278,13 +1326,16 @@ function eat() {
 
 /* coming home: half of what you carry goes to the family.
    food feeds them, the rest goes on the pile by the fire. */
-function comeHome() {
+function openBasket() {
   const c = cave();
   if (!c.stash) c.stash = {};
   const tally = {};
   S.pack.forEach(id => tally[id] = (tally[id] || 0) + 1);
   let fed = 0, laid = 0;
   Object.keys(tally).forEach(id => {
+    const w = WBY[id];
+    const raw = w && !w.a && !w.mind;
+    if (!raw && !FOODVAL[id]) return;          // a made thing is a tool: you keep it
     const give_ = Math.floor(tally[id] / 2) || (tally[id] === 1 ? 1 : 0);
     for (let i = 0; i < give_; i++) {
       consume(id);
@@ -1294,7 +1345,8 @@ function comeHome() {
   });
   if (fed || laid) SFX.take();
   homeMsg = (fed ? fed + " FOR THE LARDER" : "") + (fed && laid ? ", " : "") + (laid ? laid + " ON THE PILE" : "");
-  if (!fed && !laid) homeMsg = "YOU CAME HOME EMPTY HANDED";
+  if (!fed && !laid) homeMsg = "NOTHING RAW TO LEAVE - TOOLS KEPT";
+  else homeMsg += " - TOOLS KEPT";
   earn("HOME");
   if (fed && S.kids.some(k => k.alive)) earn("GIFT");
   homeSel = 0;
@@ -1303,6 +1355,7 @@ function comeHome() {
   if (mode === "home") render();
   return true;
 }
+function placeBasketNear() { return null; }
 function stashList() {
   const c = cave();
   if (!c.stash) return [];
@@ -1324,17 +1377,18 @@ function takeFromStash(i) {
 function drawHome() {
   border(BLACK); cls(BLACK);
   const c = cave();
-  centre(SY + 3, "YOUR FIRE", BYELLOW);
+  centre(SY + 3, "THE BASKET", BYELLOW);
   fill(SX + 8, SY + 14, SW - 16, 1, BLUE);
-  sprite(SX + 16, SY + 20, "fire", c.hearthLit ? BRED : WHITE, c.hearthLit ? BYELLOW : WHITE);
+  sprite(SX + 14, SY + 20, "basket", YELLOW, RED);
+  if (c.hearth) sprite(SX + 34, SY + 20, "fire", c.hearthLit ? BRED : WHITE, c.hearthLit ? BYELLOW : WHITE);
   const alive = S.kids.filter(k => k.alive);
-  if (S.mate) sprite(SX + 44, SY + 20, "woman", BMAG);
-  alive.slice(0, 4).forEach((k, i) => sprite(SX + 70 + i * 20, SY + 20, "child", k.health > 50 ? BCYAN : BRED));
+  if (S.mate) sprite(SX + 58, SY + 20, "woman", BMAG);
+  alive.slice(0, 4).forEach((k, i) => sprite(SX + 80 + i * 18, SY + 20, "child", k.health > 50 ? BCYAN : BRED));
   text(SX + 160, SY + 22, "LARDER " + S.larder, BWHITE);
   text(SX + 160, SY + 32, "HANDS " + kinds() + "/" + packCap(), BCYAN);
   tc(0, 6, homeMsg.substr(0, 32), BGREEN);
   fill(SX + 8, SY + 58, SW - 16, 1, BLUE);
-  centre(SY + 62, "THE PILE BY THE FIRE", MAGENTA);
+  centre(SY + 62, "THE PILE IN THE BASKET", MAGENTA);
   const list = stashList();
   const start = pageOf(homeSel) * PER_PAGE;
   if (!list.length) centre(SY + 100, "NOTHING HERE YET", WHITE);
@@ -1386,7 +1440,7 @@ function versionStamp(col) {
 function render() {
   setKeyLabel("eat", mode === "craft" ? "DROP" : "EAT");
   if (S && S.reveal && S.reveal.length && mode !== "reveal" && mode !== "death" && mode !== "over") {
-    returnMode = mode === "craft" ? "play" : mode;
+    returnMode = mode;
     mode = "reveal"; revealT0 = 0;
     revealLock = performance.now() + 1400;
     SFX.word();
@@ -1478,6 +1532,11 @@ function drawTile(dx, dy, t, mx, my, c) {
   }
   if (t === T.HEARTH) sprite(dx, dy, "fire", c.hearthLit ? BRED : WHITE, c.hearthLit ? BYELLOW : WHITE);
   if (t === T.KILN) { fill(dx + 2, dy + 3, 12, 11, WHITE); fill(dx + 5, dy + 8, 6, 6, BRED); }
+  if (t === T.FORGE) {
+    fill(dx + 1, dy + 2, 14, 13, BWHITE); fill(dx + 3, dy + 5, 10, 9, BRED);
+    fill(dx + 5, dy + 7, 6, 5, BYELLOW); fill(dx + 6, dy + 8, 4, 3, BWHITE);
+  }
+  if (t === T.BASKET) sprite(dx, dy, "basket", YELLOW, RED);
   if (t === T.EXIT) sprite(dx, dy, "exit", WHITE, WHITE, -1);
 }
 function mark8(x, y, col) {
@@ -1498,7 +1557,7 @@ function drawNode(dx, dy, kind) {
 function craftItems() {
   const st = stationHere();
   const list = [];
-  if (st) list.push({ id: STATION_GIVES[st], virtual: true, count: 0 });
+  if (st) list.push({ id: STATION_GIVES[st], label: STATION_NAME[st], virtual: true, count: 0 });
   const tally = {};
   S.pack.forEach(id => { tally[id] = (tally[id] || 0) + 1; });
   Object.keys(tally)
@@ -1544,7 +1603,7 @@ function drawCraft() {
     }
     drawMark(x + 2, y, w, it.virtual ? BWHITE : FAMS[w.fam].lit, 2);
     if (it.count > 1) { fill(x + 24, y + 22, 10, 9, BLACK); text(x + 25, y + 23, String(it.count), BCYAN); }
-    const nm = it.id.substr(0, 4);
+    const nm = (it.label || it.id).substr(0, 4);
     text(x + 17 - nm.length * 4, y + 33, nm, chosen ? BYELLOW : (it.virtual ? BCYAN : WHITE));
     // a small cross on anything already tried with the chosen thing, here
     if (craft.a !== null && !chosen && wasTried(items[craft.a].id, it.id)) {
@@ -1552,10 +1611,17 @@ function drawCraft() {
     }
   });
   fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
-  if (!st) centre(SY + 164, "NO PLACE TO WORK - YOU CAN DROP", BRED);
-  else centre(SY + 164, craft.a === null ? "PICK ONE THING   L CLOSES" : "PICK WHAT GOES WITH IT   X = TRIED", BWHITE);
+  if (msg[0]) {
+    centre(SY + 162, msg[0], BWHITE);
+    centre(SY + 172, msg[1], msg[1].indexOf("STILL HAVE") >= 0 ? BGREEN : YELLOW);
+  } else if (!st) {
+    centre(SY + 162, "NO PLACE TO WORK - YOU CAN DROP", BRED);
+  } else {
+    centre(SY + 162, craft.a === null ? "PICK ONE THING" : "PICK WHAT GOES WITH IT", BWHITE);
+    centre(SY + 172, "X = ALREADY TRIED HERE", YELLOW);
+  }
   const pl = pageLabel(craft.sel, items.length);
-  centre(SY + 176, pl ? "E DROPS.   " + pl : "CYAN BOX IS THIS PLACE. E DROPS.", CYAN);
+  centre(SY + 183, (pl ? pl + "   " : "") + "E DROPS   L CLOSES", CYAN);
   versionStamp(WHITE);
 }
 
@@ -1579,7 +1645,6 @@ function openWall(wx, wy) {
   wallOpen = w;
   mode = "wall";
   SFX.wall();
-  cv.classList.add("zoom");
   tick();
   if (mode === "wall") render();
 }
@@ -2107,6 +2172,7 @@ function openCraft() {
   if (!S.pack.length) { SFX.block(); say("YOUR HANDS ARE EMPTY.", st ? "" : "STAND AT STONE, FIRE OR WATER."); render(); return; }
   SFX.select();
   craft.a = null; craft.sel = 0;
+  say("", "");
   mode = "craft"; render();
 }
 function craftPick(i) {
