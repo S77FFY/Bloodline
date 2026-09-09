@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.12">
+<meta name="app-version" content="2.0.14">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -109,13 +109,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.12
+   BLOODLINE  v2.0.14
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.12";
+const VERSION = "2.0.14";
 
 
 /* ---------------- beeper ----------------
@@ -964,13 +964,25 @@ function nextLife() {
   S.heir.words.forEach(id => inherited[id] = true);
   const lostList = Object.keys(S.known).filter(id => !inherited[id]);
   const lost = lostList.length;
-  const carried = S.pack.filter(id => !FOODVAL[id]).slice(0, 6);
+  /* a painted tool is one your line knows how to have. the heir gets one of each. */
+  const PLACES = { FIRE: 1, KILN: 1, FORGE: 1, WELL: 1, CHANNEL: 1 };
+  const heirlooms = Object.keys(S.painted).filter(id => {
+    const w = WBY[id];
+    return w && w.a && !w.mind && !FOODVAL[id] && !PLACES[id];
+  });
+  const carried = S.pack.filter(id => !FOODVAL[id]);
+  heirlooms.forEach(id => { if (carried.indexOf(id) < 0) carried.push(id); });
   const caves = S.caves, at = S.at, gen = S.gen + 1, painted = S.painted, seen = S.seen;
   const kidsLeft = S.kids.filter(k => k.alive && k !== S.heir);
   const bestSoFar = best;
   S = newState();
   S.gen = gen; S.caves = caves; S.at = at; S.painted = painted; S.seen = seen;
-  S.known = inherited; S.pack = carried;
+  S.known = inherited;
+  S.pack = [];
+  const spill = [];
+  carried.forEach(id => { if (kinds() < 10 + 2 * kidsLeft.length) give(id, 1); else spill.push(id); });
+  S.heirlooms = heirlooms.length;
+  S.spill = spill;
   S.lost = {};
   Object.keys(painted).length; lostList.forEach(id => S.lost[id] = true);
   S.kids = kidsLeft.map(k => ({ born: 0, age: k.age, alive: true, health: k.health, words: [] }));
@@ -978,9 +990,15 @@ function nextLife() {
   best = bestSoFar;
   const h = cave().hearth;
   S.px = h ? h[0] : 8; S.py = h ? h[1] : 4;
+  // anything that will not fit goes on the pile at the fire
+  if (S.spill.length) {
+    const c0 = cave();
+    if (c0 && c0.basket) { if (!c0.stash) c0.stash = {}; S.spill.forEach(id => c0.stash[id] = (c0.stash[id] || 0) + 1); }
+  }
   earn("NAME");
-  if (lost > 0) say(S.name + " TAKES UP THE LINE.", lost + " UNPAINTED WORDS ARE LOST.");
-  else say(S.name + " TAKES UP THE LINE.", "NOTHING WAS LOST.");
+  const tools = S.heirlooms ? S.heirlooms + " TOOLS HANDED DOWN. " : "";
+  if (lost > 0) say(S.name + " TAKES UP THE LINE.", (tools + lost + " UNPAINTED WORDS LOST.").substr(0, 32));
+  else say(S.name + " TAKES UP THE LINE.", (tools + "NOTHING WAS LOST.").substr(0, 32));
   mode = "play";
   render();
 }
@@ -1208,7 +1226,7 @@ function attempt(a, b, va, vb) {
     else if (hit.id === "KILN") { buildKiln(); }
     else if (hit.id === "FORGE") { buildForge(); }
     else if (hit.id === "WELL" || hit.id === "CHANNEL") { digWater(); }
-    else give(hit.id);
+    else give(hit.id, 1, true);
     const isNew = discover(hit.id);
     SFX.craft();
     const used = [];
@@ -1216,6 +1234,7 @@ function attempt(a, b, va, vb) {
     if (!vb) used.push(b);
     if (!isNew) say("YOU MAKE ANOTHER " + hit.id + ".", used.join(" AND ") + " GONE");
     else say("YOU MAKE A " + hit.id + ".", used.join(" AND ") + " GONE");
+    if (overloaded()) say(msg[0], "YOUR HANDS ARE OVERFULL NOW.");
     tick(hit.tier + 1);
     if (mode === "play" || mode === "craft") {
       craft.a = null;
@@ -1674,7 +1693,7 @@ function drawWall() {
     text(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22 + 17, id.substr(0, 4), WHITE);
   });
   fill(SX + 16, SY + 156, SW - 32, 1, MAGENTA);
-  centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT A WORD" : "M PAINTS A WORD - NEEDS PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
+  centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT ALL YOU KNOW" : "M PAINTS ALL YOU KNOW - NEEDS PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
   centre(SY + 176, "SPACE TO STEP BACK", CYAN);
   versionStamp(WHITE);
 }
@@ -1683,20 +1702,22 @@ function drawWall() {
 function drawPaint() {
   border(BLACK); cls(BLACK);
   const list = paintable();
-  centre(SY + 4, "PAINT WHICH WORD", BYELLOW);
+  centre(SY + 4, "EVERYTHING YOU KNOW", BYELLOW);
   fill(SX + 8, SY + 16, SW - 16, 1, BLUE);
-  if (!list.length) { centre(SY + 80, "EVERYTHING YOU KNOW IS PAINTED", WHITE); versionStamp(WHITE); return; }
-  const start = Math.max(0, Math.min(paintPick - 3, list.length - 7));
-  for (let i = 0; i < 7 && start + i < list.length; i++) {
-    const id = list[start + i], w = WBY[id];
-    const y = SY + 26 + i * 20;
-    const on = (start + i === paintPick);
-    if (on) fill(SX + 8, y - 2, SW - 16, 20, BLUE);
-    drawMark(SX + 14, y, w, FAMS[w.fam].lit, 1);
-    text(SX + 36, y + 4, id, on ? BYELLOW : BWHITE);
-  }
-  fill(SX + 8, SY + 168, SW - 16, 1, BLUE);
-  centre(SY + 174, "PIGMENT " + S.pack.filter(x => x === "PIGMENT").length + "   SPACE TO STEP BACK", CYAN);
+  if (!list.length) { centre(SY + 80, "IT IS ALL ON THE WALLS ALREADY", WHITE); versionStamp(WHITE); return; }
+  const start = pageOf(paintPick) * PER_PAGE;
+  list.slice(start, start + PER_PAGE).forEach((id, local) => {
+    const w = WBY[id];
+    const c = gridCell(local, SY + 24), x = c[0], y = c[1];
+    drawMark(x + 2, y, w, FAMS[w.fam].lit, 2);
+    const nm = id.substr(0, 4);
+    text(x + 17 - nm.length * 4, y + 33, nm, BWHITE);
+  });
+  fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
+  centre(SY + 162, list.length + " WORDS, ONE PIGMENT, " + (2 * list.length) + " TURNS", BWHITE);
+  centre(SY + 172, "SPACE PAINTS THEM ALL", BGREEN);
+  const pl = pageLabel(paintPick, list.length);
+  centre(SY + 183, (pl ? pl + "   " : "") + "L STEPS BACK", CYAN);
   versionStamp(WHITE);
 }
 function paintable() { return Object.keys(S.known).filter(id => !S.painted[id]); }
@@ -1816,7 +1837,13 @@ function drawDeath() {
     centre(SY + 102, paintedCount() + " WORDS ARE ON THE WALLS.", BWHITE);
     centre(SY + 116, saved + " MORE THE CHILD SAW YOU FIND.", BWHITE);
     centre(SY + 130, (unpainted.length - saved) + " GO WITH YOU INTO THE DARK.", unpainted.length - saved ? BRED : WHITE);
-    centre(SY + 156, "TAP TO TAKE UP THE LINE", BWHITE);
+    const PLACES2 = { FIRE: 1, KILN: 1, FORGE: 1, WELL: 1, CHANNEL: 1 };
+    const tools = Object.keys(S.painted).filter(id => {
+      const w = WBY[id];
+      return w && w.a && !w.mind && !FOODVAL[id] && !PLACES2[id];
+    }).length;
+    centre(SY + 144, tools + " PAINTED TOOLS PASS TO THE CHILD.", tools ? BGREEN : WHITE);
+    centre(SY + 166, "TAP TO TAKE UP THE LINE", BWHITE);
   } else {
     centre(SY + 92, "NO CHILD OUTLIVES YOU.", BRED);
     centre(SY + 108, "THE LINE ENDS HERE.", WHITE);
@@ -2128,10 +2155,14 @@ function press(k) {
     SFX.select(); closeWall(); return;
   }
   if (mode === "paint") {
-    const list = paintable();
-    if (k === "up") { paintPick = (paintPick + list.length - 1) % list.length; SFX.step(); render(); return; }
-    if (k === "down") { paintPick = (paintPick + 1) % list.length; SFX.step(); render(); return; }
-    if (k === "wait" || k === "make") { doPaint(list[paintPick]); return; }
+    const n = paintable().length;
+    if (n) {
+      if (k === "left") { paintPick = (paintPick + n - 1) % n; SFX.step(); render(); return; }
+      if (k === "right") { paintPick = (paintPick + 1) % n; SFX.step(); render(); return; }
+      if (k === "up") { paintPick = (paintPick + n - GRID_COLS) % n; SFX.step(); render(); return; }
+      if (k === "down") { paintPick = (paintPick + GRID_COLS) % n; SFX.step(); render(); return; }
+    }
+    if (k === "wait" || k === "make") { doPaintAll(); return; }
     if (k === "map") { SFX.select(); closeWall(); return; }
     SFX.select(); mode = "wall"; render(); return;
   }
@@ -2210,16 +2241,17 @@ function closeWall() {
   mode = "play";
   render();
 }
-function doPaint(id) {
-  if (!id) return;
+function doPaintAll() {
+  const list = paintable();
+  if (!list.length) { SFX.block(); say("NOTHING LEFT TO PAINT.", ""); mode = "wall"; render(); return; }
   if (!has("PIGMENT")) { SFX.block(); say("NO PIGMENT LEFT.", ""); mode = "wall"; render(); return; }
   consume("PIGMENT");
-  paintWord(id);
+  list.forEach(id => paintWord(id));
   SFX.craft();
-  say(id + " IS ON THE WALL NOW.", "IT WILL OUTLIVE YOU.");
-  tick(4);
+  say("YOU PAINT " + list.length + " WORDS ON THE ROCK.", "THEY WILL OUTLIVE YOU.");
+  tick(2 * list.length);
   paintPick = 0;
-  if (mode === "paint") { mode = "wall"; render(); }
+  if (mode === "paint" || mode === "wall") { mode = "wall"; render(); }
 }
 
 document.getElementById("pad").addEventListener("click", e => {
@@ -2282,16 +2314,7 @@ function tapAt(clientX, clientY) {
     press("words"); return;
   }
   if (mode === "paint") {
-    const list = paintable();
-    const start = Math.max(0, Math.min(paintPick - 3, list.length - 7));
-    for (let i = 0; i < 7 && start + i < list.length; i++) {
-      const y = SY + 26 + i * 20;
-      if (pt[1] >= y - 2 && pt[1] < y + 18) {
-        if (paintPick === start + i) doPaint(list[paintPick]);
-        else { paintPick = start + i; SFX.step(); render(); }
-        return;
-      }
-    }
+    if (pt[1] >= SY + 158) { doPaintAll(); return; }
     press("words"); return;
   }
   if (mode !== "play") press("any");
