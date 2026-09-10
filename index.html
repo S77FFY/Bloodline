@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.15">
+<meta name="app-version" content="2.0.16">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -77,35 +77,42 @@
     font-size: 9px; letter-spacing: 2px; color: #6a6a70;
   }
 
-  /* turn the phone on its side and the keys move to the edges */
-  @media (orientation: landscape) and (max-height: 700px) {
+  /* on its side: keys at the edges, screen in the middle, 4:3 kept */
+  @media (orientation: landscape) {
     #wrap {
       flex-direction: row; align-items: center; justify-content: center;
-      max-width: none; height: 100%; gap: 8px;
-      padding: 4px calc(6px + env(safe-area-inset-right)) 4px calc(6px + env(safe-area-inset-left));
+      max-width: none; height: 100%; gap: 10px;
+      padding: 4px calc(8px + env(safe-area-inset-right)) 4px calc(8px + env(safe-area-inset-left));
     }
     #screen {
       order: 2;
-      height: min(calc(100dvh - 10px), calc((100vw - 300px) * 0.75));
       width: auto; aspect-ratio: 4 / 3;
+      height: min(calc(100vh - 12px), calc((100vw - 364px) * 0.75), 720px);
+      height: min(calc(100dvh - 12px), calc((100vw - 364px) * 0.75), 720px);
     }
     #pad { display: contents; }
+    /* square grid, square keys */
     #dpad {
-      order: 1; flex: 0 0 138px; width: 138px;
-      height: min(calc(100dvh - 12px), 300px);
+      order: 1; flex: 0 0 auto;
+      width: min(calc(100vh - 16px), 200px);
+      width: min(calc(100dvh - 16px), 200px);
+      aspect-ratio: 1;
+      grid-template-columns: repeat(3, 1fr);
       grid-template-rows: repeat(3, 1fr);
     }
     #side {
-      order: 3; flex: 0 0 118px; width: 118px;
-      height: min(calc(100dvh - 12px), 320px);
+      order: 3; flex: 0 0 auto; width: 120px;
+      height: min(calc(100vh - 16px), 340px);
+      height: min(calc(100dvh - 16px), 340px);
     }
     button { min-height: 0; padding: 2px; }
-    .main { font-size: 15px; }
+    .main { font-size: 16px; }
     .main.word { font-size: 11px; }
     .top { font-size: 7px; }
     .sub { font-size: 8px; }
     #badge, #flash { display: none; }
   }
+
   .blank { visibility: hidden; box-shadow: none; }
   @media (prefers-reduced-motion: reduce) { #screen { transition: none; } }
 </style>
@@ -139,13 +146,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.15
+   BLOODLINE  v2.0.16
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.15";
+const VERSION = "2.0.16";
 
 
 /* ---------------- beeper ----------------
