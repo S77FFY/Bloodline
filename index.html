@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.16">
+<meta name="app-version" content="2.0.17">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -146,13 +146,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.16
+   BLOODLINE  v2.0.17
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.16";
+const VERSION = "2.0.17";
 
 
 /* ---------------- beeper ----------------
@@ -1488,6 +1488,7 @@ let wallOpen = null;
 let paintPick = 0;
 let homeSel = 0;
 let homeMsg = "";
+let wallMsg = "";
 
 function versionStamp(col) {
   const label = "V" + VERSION;
@@ -1496,6 +1497,8 @@ function versionStamp(col) {
 
 function render() {
   setKeyLabel("eat", mode === "craft" ? "DROP" : "EAT");
+  setKeyLabel("wait", mode === "paint" ? "PAINT" : "WAIT");
+  setKeyLabel("make", mode === "paint" ? "PAINT" : (mode === "wall" ? "PAINT" : "MAKE"));
   if (S && S.reveal && S.reveal.length && mode !== "reveal" && mode !== "death" && mode !== "over") {
     returnMode = mode;
     mode = "reveal"; revealT0 = 0;
@@ -1526,8 +1529,8 @@ function drawPlay() {
   const c = cave();
   tc(0, 0, (pad("AGE " + S.age, 8) + pad("FOOD " + Math.max(0, S.food | 0), 9) +
             pad("HURT " + Math.max(0, 100 - S.health), 9) + BIOMENAME[c.biome].substr(0, 6)).substr(0, 32), BWHITE);
-  tc(0, 1, (pad("PACK " + kinds() + "/" + packCap(), 10) + pad("LARDER " + S.larder, 11) +
-            pad(paintedCount() + "/" + WORDS.length, 8)).substr(0, 32), CYAN);
+  tc(0, 1, (pad("PACK " + kinds() + "/" + packCap(), 9) + pad("KNOW " + knownCount(), 9) +
+            pad("PAINT " + paintedCount(), 9) + "L" + S.larder).substr(0, 32), CYAN);
   fill(SX, SY + 16, SW, 1, BLUE);
 
   const oy = SY + 18;
@@ -1700,6 +1703,7 @@ function openWall(wx, wy) {
   }
   w.hints.forEach(id => noteSeen(id));
   wallOpen = w;
+  wallMsg = "";
   mode = "wall";
   SFX.wall();
   tick();
@@ -1731,7 +1735,9 @@ function drawWall() {
     text(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22 + 17, id.substr(0, 4), WHITE);
   });
   fill(SX + 16, SY + 156, SW - 32, 1, MAGENTA);
-  centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT ALL YOU KNOW" : "M PAINTS ALL YOU KNOW - NEEDS PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
+  if (wallMsg) centre(SY + 162, wallMsg, BGREEN);
+  else centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT ALL YOU KNOW" : "M PAINTS ALL YOU KNOW - NEEDS PIGMENT",
+              has("PIGMENT") ? BYELLOW : WHITE);
   centre(SY + 176, "SPACE TO STEP BACK", CYAN);
   versionStamp(WHITE);
 }
@@ -1753,7 +1759,7 @@ function drawPaint() {
   });
   fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
   centre(SY + 162, list.length + " WORDS, ONE PIGMENT, " + (2 * list.length) + " TURNS", BWHITE);
-  centre(SY + 172, "SPACE PAINTS THEM ALL", BGREEN);
+  centre(SY + 172, "SPACE, M OR TAP PAINTS THEM ALL", BGREEN);
   const pl = pageLabel(paintPick, list.length);
   centre(SY + 183, (pl ? pl + "   " : "") + "L STEPS BACK", CYAN);
   versionStamp(WHITE);
@@ -2186,8 +2192,8 @@ function press(k) {
   }
   if (mode === "wall") {
     if (k === "make") {
-      if (!has("PIGMENT")) { SFX.block(); return; }
-      if (!paintable().length) { SFX.block(); return; }
+      if (!has("PIGMENT")) { SFX.block(); wallMsg = "YOU HAVE NO PIGMENT TO PAINT WITH"; render(); return; }
+      if (!paintable().length) { SFX.block(); wallMsg = "EVERY WORD YOU KNOW IS ALREADY HERE"; render(); return; }
       SFX.select(); paintPick = 0; mode = "paint"; render(); return;
     }
     SFX.select(); closeWall(); return;
@@ -2287,6 +2293,7 @@ function doPaintAll() {
   list.forEach(id => paintWord(id));
   SFX.craft();
   say("YOU PAINT " + list.length + " WORDS ON THE ROCK.", "THEY WILL OUTLIVE YOU.");
+  wallMsg = list.length + " WORDS PAINTED. " + paintedCount() + " IN ALL.";
   tick(2 * list.length);
   paintPick = 0;
   if (mode === "paint" || mode === "wall") { mode = "wall"; render(); }
@@ -2351,10 +2358,7 @@ function tapAt(clientX, clientY) {
     }
     press("words"); return;
   }
-  if (mode === "paint") {
-    if (pt[1] >= SY + 158) { doPaintAll(); return; }
-    press("words"); return;
-  }
+  if (mode === "paint") { doPaintAll(); return; }
   if (mode !== "play") press("any");
 }
 cv.addEventListener("touchstart", e => {
