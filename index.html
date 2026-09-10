@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.14">
+<meta name="app-version" content="2.0.15">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -76,6 +76,36 @@
     position: absolute; left: 14px; bottom: 8px;
     font-size: 9px; letter-spacing: 2px; color: #6a6a70;
   }
+
+  /* turn the phone on its side and the keys move to the edges */
+  @media (orientation: landscape) and (max-height: 700px) {
+    #wrap {
+      flex-direction: row; align-items: center; justify-content: center;
+      max-width: none; height: 100%; gap: 8px;
+      padding: 4px calc(6px + env(safe-area-inset-right)) 4px calc(6px + env(safe-area-inset-left));
+    }
+    #screen {
+      order: 2;
+      height: min(calc(100dvh - 10px), calc((100vw - 300px) * 0.75));
+      width: auto; aspect-ratio: 4 / 3;
+    }
+    #pad { display: contents; }
+    #dpad {
+      order: 1; flex: 0 0 138px; width: 138px;
+      height: min(calc(100dvh - 12px), 300px);
+      grid-template-rows: repeat(3, 1fr);
+    }
+    #side {
+      order: 3; flex: 0 0 118px; width: 118px;
+      height: min(calc(100dvh - 12px), 320px);
+    }
+    button { min-height: 0; padding: 2px; }
+    .main { font-size: 15px; }
+    .main.word { font-size: 11px; }
+    .top { font-size: 7px; }
+    .sub { font-size: 8px; }
+    #badge, #flash { display: none; }
+  }
   .blank { visibility: hidden; box-shadow: none; }
   @media (prefers-reduced-motion: reduce) { #screen { transition: none; } }
 </style>
@@ -109,13 +139,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.14
+   BLOODLINE  v2.0.15
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.14";
+const VERSION = "2.0.15";
 
 
 /* ---------------- beeper ----------------
@@ -1453,7 +1483,8 @@ let homeSel = 0;
 let homeMsg = "";
 
 function versionStamp(col) {
-  text(W - 8 * 6 - 4, H - 11, "V" + VERSION, col === undefined ? WHITE : col);
+  const label = "V" + VERSION;
+  text(W - label.length * 8 - 10, H - 11, label, col === undefined ? WHITE : col);
 }
 
 function render() {
