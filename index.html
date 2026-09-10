@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.17">
+<meta name="app-version" content="2.0.18">
 <meta name="theme-color" content="#000000">
 <title>BLOODLINE</title>
 <style>
@@ -146,13 +146,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.17
+   BLOODLINE  v2.0.18
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.17";
+const VERSION = "2.0.18";
 
 
 /* ---------------- beeper ----------------
@@ -1489,6 +1489,7 @@ let paintPick = 0;
 let homeSel = 0;
 let homeMsg = "";
 let wallMsg = "";
+let wallSel = 0;
 
 function versionStamp(col) {
   const label = "V" + VERSION;
@@ -1704,41 +1705,92 @@ function openWall(wx, wy) {
   w.hints.forEach(id => noteSeen(id));
   wallOpen = w;
   wallMsg = "";
+  wallSel = 0;
   mode = "wall";
   SFX.wall();
   tick();
   if (mode === "wall") render();
 }
+/* every mark on the wall, in the order the cursor walks them */
+function wallMarks() {
+  const list = [];
+  wallOpen.hints.forEach(id => list.push({ id, hint: true }));
+  wallOpen.painted.forEach(id => list.push({ id, hint: false }));
+  return list;
+}
+/* what a mark is made of. never what an unread mark makes. */
+function wallDetail(entry) {
+  const w = WBY[entry.id];
+  if (!w) return ["", ""];
+  const known = !!S.known[entry.id];
+  if (!w.a) {
+    return [known ? entry.id : "?????",
+            w.mind ? "NO HANDS MADE THIS ONE" : "DUG OUT OF " + String(w.where || "?").toUpperCase() + " GROUND"];
+  }
+  return [null, known ? "MAKES " + entry.id + " AT THE " + w.st.toUpperCase() : "MAKES SOMETHING YOU HAVE NOT MADE"];
+}
+/* draws: [mark] NAME + [mark] NAME, centred */
+function drawParents(y, w) {
+  const A = WBY[w.a], B = WBY[w.b];
+  const na = S.known[w.a] ? w.a : "?????";
+  const nb = S.known[w.b] ? w.b : "?????";
+  const width = 16 + 2 + na.length * 8 + 24 + 16 + 2 + nb.length * 8;
+  let x = SX + Math.round((SW - width) / 2);
+  drawMark(x, y, A, S.known[w.a] ? FAMS[A.fam].lit : FAMS[A.fam].ink, 1); x += 18;
+  text(x, y + 4, na, S.known[w.a] ? BWHITE : WHITE); x += na.length * 8 + 8;
+  text(x, y + 4, "+", BYELLOW); x += 16;
+  drawMark(x, y, B, S.known[w.b] ? FAMS[B.fam].lit : FAMS[B.fam].ink, 1); x += 18;
+  text(x, y + 4, nb, S.known[w.b] ? BWHITE : WHITE);
+}
+
 function drawWall() {
   border(BLACK); cls(BLACK);
   for (let y = 0; y < SH; y += 3) for (let x = 0; x < SW; x += 3)
     if (((x * 7 + y * 11) % 17) < 3) fill(SX + x, SY + y, 2, 2, BLUE);
-  centre(SY + 4, "A PAINTED WALL", BWHITE);
-  fill(SX + 16, SY + 16, SW - 32, 1, MAGENTA);
+  centre(SY + 2, "A PAINTED WALL", BWHITE);
+  fill(SX + 16, SY + 12, SW - 32, 1, MAGENTA);
 
+  const list = wallMarks();
+  if (wallSel >= list.length) wallSel = Math.max(0, list.length - 1);
   const hints = wallOpen.hints, mine = wallOpen.painted;
-  centre(SY + 24, "MARKS FROM BEFORE YOU", MAGENTA);
+
+  centre(SY + 16, "MARKS FROM BEFORE YOU", MAGENTA);
   hints.forEach((id, i) => {
     const w = WBY[id];
-    const x = SX + 40 + i * 64;
-    drawMark(x, SY + 36, w, S.known[id] ? FAMS[w.fam].lit : FAMS[w.fam].ink, 2);
-    const nm = S.known[id] ? id : "?????";
-    text(x + 16 - nm.length * 4, SY + 72, nm.substr(0, 8), S.known[id] ? BGREEN : WHITE);
+    const x = SX + 44 + i * 62;
+    if (wallSel === i) { fill(x - 5, SY + 24, 42, 1, BWHITE); fill(x - 5, SY + 57, 42, 1, BWHITE);
+                         fill(x - 5, SY + 24, 1, 34, BWHITE); fill(x + 36, SY + 24, 1, 34, BWHITE); }
+    drawMark(x, SY + 26, w, S.known[id] ? FAMS[w.fam].lit : FAMS[w.fam].ink, 2);
+    const nm = S.known[id] ? id.substr(0, 5) : "?????";
+    text(x + 16 - nm.length * 4, SY + 60, nm, S.known[id] ? BGREEN : WHITE);
   });
 
-  fill(SX + 16, SY + 88, SW - 32, 1, MAGENTA);
-  centre(SY + 94, "WHAT YOUR LINE HAS PUT HERE", MAGENTA);
-  if (!mine.length) centre(SY + 112, "NOTHING YET", WHITE);
-  else mine.slice(0, 12).forEach((id, i) => {
-    const w = WBY[id];
-    drawMark(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22, w, FAMS[w.fam].lit, 1);
-    text(SX + 14 + (i % 6) * 40, SY + 108 + ((i / 6) | 0) * 22 + 17, id.substr(0, 4), WHITE);
-  });
-  fill(SX + 16, SY + 156, SW - 32, 1, MAGENTA);
-  if (wallMsg) centre(SY + 162, wallMsg, BGREEN);
-  else centre(SY + 162, has("PIGMENT") ? "PRESS M TO PAINT ALL YOU KNOW" : "M PAINTS ALL YOU KNOW - NEEDS PIGMENT",
-              has("PIGMENT") ? BYELLOW : WHITE);
-  centre(SY + 176, "SPACE TO STEP BACK", CYAN);
+  fill(SX + 16, SY + 72, SW - 32, 1, MAGENTA);
+  centre(SY + 76, "WHAT YOUR LINE HAS PUT HERE", MAGENTA);
+  if (!mine.length) centre(SY + 92, "NOTHING YET", WHITE);
+  else {
+    const per = 16, start = Math.max(0, Math.min(Math.floor(Math.max(0, wallSel - 3) / per) * per, Math.max(0, mine.length - per)));
+    mine.slice(start, start + per).forEach((id, local) => {
+      const i = 3 + start + local;
+      const w = WBY[id];
+      const x = SX + 10 + (local % 8) * 30, y = SY + 86 + ((local / 8) | 0) * 22;
+      if (wallSel === i) fill(x - 3, y - 2, 26, 21, BLUE);
+      drawMark(x + 2, y, w, FAMS[w.fam].lit, 1);
+      text(x, y + 16, id.substr(0, 3), wallSel === i ? BYELLOW : WHITE);
+    });
+  }
+
+  fill(SX + 16, SY + 134, SW - 32, 1, MAGENTA);
+  const entry = list[wallSel];
+  if (entry) {
+    const w = WBY[entry.id];
+    const d = wallDetail(entry);
+    if (w && w.a) { drawParents(SY + 138, w); centre(SY + 158, d[1], entry.hint ? YELLOW : BGREEN); }
+    else { centre(SY + 142, d[0], BWHITE); centre(SY + 156, d[1], YELLOW); }
+  }
+  if (wallMsg) centre(SY + 172, wallMsg.substr(0, 32), BGREEN);
+  else centre(SY + 172, has("PIGMENT") ? "M PAINTS ALL YOU KNOW" : "M PAINTS - YOU HAVE NO PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
+  centre(SY + 184, "ARROWS READ   SPACE STEPS BACK", CYAN);
   versionStamp(WHITE);
 }
 
@@ -2191,6 +2243,11 @@ function press(k) {
     return;
   }
   if (mode === "wall") {
+    const marks = wallMarks();
+    if (marks.length) {
+      if (k === "left" || k === "up") { wallSel = (wallSel + marks.length - 1) % marks.length; SFX.step(); render(); return; }
+      if (k === "right" || k === "down") { wallSel = (wallSel + 1) % marks.length; SFX.step(); render(); return; }
+    }
     if (k === "make") {
       if (!has("PIGMENT")) { SFX.block(); wallMsg = "YOU HAVE NO PIGMENT TO PAINT WITH"; render(); return; }
       if (!paintable().length) { SFX.block(); wallMsg = "EVERY WORD YOU KNOW IS ALREADY HERE"; render(); return; }
@@ -2357,6 +2414,23 @@ function tapAt(clientX, clientY) {
       }
     }
     press("words"); return;
+  }
+  if (mode === "wall") {
+    const marks = wallMarks();
+    for (let i = 0; i < 3 && i < marks.length; i++) {
+      const x = SX + 44 + i * 62;
+      if (pt[0] >= x - 6 && pt[0] < x + 38 && pt[1] >= SY + 22 && pt[1] < SY + 70) {
+        wallSel = i; SFX.step(); render(); return;
+      }
+    }
+    const mine = wallOpen.painted;
+    for (let local = 0; local < 16 && local < mine.length; local++) {
+      const x = SX + 10 + (local % 8) * 30, y = SY + 86 + ((local / 8) | 0) * 22;
+      if (pt[0] >= x - 3 && pt[0] < x + 23 && pt[1] >= y - 2 && pt[1] < y + 19) {
+        wallSel = 3 + local; SFX.step(); render(); return;
+      }
+    }
+    press("any"); return;
   }
   if (mode === "paint") { doPaintAll(); return; }
   if (mode !== "play") press("any");
