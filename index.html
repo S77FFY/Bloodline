@@ -4,8 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.18">
+<meta name="app-version" content="2.0.19">
 <meta name="theme-color" content="#000000">
+<meta name="description" content="A ZX Spectrum-style caveman roguelike about learning language. 144 words, six families, one bloodline.">
+<meta name="author" content="S77FFY">
+
+<!-- saved to a home screen, it runs as an app with no browser chrome -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="BLOODLINE">
+<meta name="format-detection" content="telephone=no">
+
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAFNUlEQVR42u3dW27jMAwAwJ59L9njdD+bLiqEXJKynIzhryK2ZWkMsNTr4+Pg48/DWbm2cp++e0aueP6b2nN7ygAHHHDAAQccJ+L4+ajVg7//ni3a+tXP/QImsO4ECgcccMABBxwn4tgZPH4+nDvL/PVwznw8b3zAAQcccMDxZjhyhY79OhKE5pJCjzgeG2z1mwqm1X0en7sT696gFQ444IADDjjmszCndYZFGmnVYF9NZwTldE3U7tLUGnDAAQcccMBxZH6lp0CfybPSwJFrH8+uRNmb50XhcMABBxxvheP6gGXVGJEE18TZ9dwaoCMG78ABBxxwwAHH0Ue2sla/iXS8ZTvhIsFmFmsXplumtOCAAw444IBjQ8AYqdzpCo3AijyrkhCrILt9Ag0OOOCAAw44hnBMBIOVv0eC3Ep5JgLeLI5V0JofVjQQzsIBBxxwwAHHUJYkO4h3IhkV+fv0wKJKcDofkF6UKoMDDjjggONtcUxPLqokslbBVFfw24U+G1RG3msCdNoAHHDAAQcccDTiiF2QS6VEcFQ6qyoBbAzH7++4gtiFbKKjcSTWhAMOOOCAA44tOPqTRdnJzZVgdmKRuKuSaRFYcMABBxxwwHE6juxA4mwwVQFxQqNOdOBVFqeLled3Em1Q4IADDjjggKMRRzapVZm81IVjInnVtVhvdkBTrUPx++qRRfvhgAMOOOCAoxFH14KvlY60bBN0JcG6sGYH+0ws/j9ywAEHHHDAAcdQ30rXQJ5sBXWV+apk2kSAnK3nkQ45OOCAAw444GjEUWns7IJr60btGXx0VUC6c+PjrmAcDjjggAMOOKo4ugZ6VBaxn1gcfrpRK/U2jSzSFlsXb4EDDjjggAOODUFrJDjNdjL1Neo1gW3+vZ4PDO4qGxxwwAEHHHDcCcdER9EJHWa1bOPvg3snAtJb7g4JBxxwwAHHy+O4StnOJNje43mNTi881zZgCg444IADDjiOwbG6OnfX7Ia/tTfomgL9//fsSu5VJkHBAQcccMABxyk4ugakTAStZ+cAcxsHTC88NxKQwgEHHHDAAUdjO0Y6mcYXA7noWTvTh9Mdb10bEcEBBxxwwAHHFI7VUJuJjXHf7+iHFcEx9AJwwAEHHHDAsTUxdVmBDmuwE5KEl9U/HHDAAQcccAwloCqL0b5D4+1sl59t9PwfCDjggAMOOOC4Eseq+iM3zW4GeM+g9dwQOtI5WkpUwgEHHHDAAUcZRy7QWz0suwDc/ZNm+wLMyqYDWQH/aIADDjjggAOORhy5I7u4WwTN+CScraFhD47KpsyXTQCDAw444IADjsYXzia7IoHVxGL4M+HX7FeYxZEf7PO8/ME3hAMOOOCAA45GHL9fUglCswvDnTG8Z18psnW196OCAw444IADjrMTQTOB1QnBaT+mSEB60wFTcMABBxxwwNEYevXgyA5OXgdfZ02CWgWY2fetfTyFhf3hgAMOOOCAoxFHVwKnsjFd17VXJbi6Bum81KaIcMABBxxwwHEhlNUknErn0wkhaLZRI/XQ1al2RIgOBxxwwAEHHJv7aCIdSJVAdWdyLDLQaSagviEPOOCAAw444NjsLVsplQ6qnR9DdhL57ReugQMOOOCAA45LeVQ49Uz2rSWOegYJd00uOnxLADjggAMOOOBoDK1u5Li9cnP1sEZ5+82E4IADDjjggOO4Ko0khSYSaDMJpWsa9cX+Q4EDDjjggAOOzcXoeVbsLtPvdff7wwEHHHDAAccr5EJeKuHzBh8tHHDAAQcccIwffwF6foQKJbxXsgAAAABJRU5ErkJggg==">
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAFNUlEQVR42u3dW27jMAwAwJ59L9njdD+bLiqEXJKynIzhryK2ZWkMsNTr4+Pg48/DWbm2cp++e0aueP6b2nN7ygAHHHDAAQccJ+L4+ajVg7//ni3a+tXP/QImsO4ECgcccMABBxwn4tgZPH4+nDvL/PVwznw8b3zAAQcccMDxZjhyhY79OhKE5pJCjzgeG2z1mwqm1X0en7sT696gFQ444IADDjjmszCndYZFGmnVYF9NZwTldE3U7tLUGnDAAQcccMBxZH6lp0CfybPSwJFrH8+uRNmb50XhcMABBxxvheP6gGXVGJEE18TZ9dwaoCMG78ABBxxwwAHH0Ue2sla/iXS8ZTvhIsFmFmsXplumtOCAAw444IBjQ8AYqdzpCo3AijyrkhCrILt9Ag0OOOCAAw44hnBMBIOVv0eC3Ep5JgLeLI5V0JofVjQQzsIBBxxwwAHHUJYkO4h3IhkV+fv0wKJKcDofkF6UKoMDDjjggONtcUxPLqokslbBVFfw24U+G1RG3msCdNoAHHDAAQcccDTiiF2QS6VEcFQ6qyoBbAzH7++4gtiFbKKjcSTWhAMOOOCAA44tOPqTRdnJzZVgdmKRuKuSaRFYcMABBxxwwHE6juxA4mwwVQFxQqNOdOBVFqeLled3Em1Q4IADDjjggKMRRzapVZm81IVjInnVtVhvdkBTrUPx++qRRfvhgAMOOOCAoxFH14KvlY60bBN0JcG6sGYH+0ws/j9ywAEHHHDAAcdQ30rXQJ5sBXWV+apk2kSAnK3nkQ45OOCAAw444GjEUWns7IJr60btGXx0VUC6c+PjrmAcDjjggAMOOKo4ugZ6VBaxn1gcfrpRK/U2jSzSFlsXb4EDDjjggAOODUFrJDjNdjL1Neo1gW3+vZ4PDO4qGxxwwAEHHHDcCcdER9EJHWa1bOPvg3snAtJb7g4JBxxwwAHHy+O4StnOJNje43mNTi881zZgCg444IADDjiOwbG6OnfX7Ia/tTfomgL9//fsSu5VJkHBAQcccMABxyk4ugakTAStZ+cAcxsHTC88NxKQwgEHHHDAAUdjO0Y6mcYXA7noWTvTh9Mdb10bEcEBBxxwwAHHFI7VUJuJjXHf7+iHFcEx9AJwwAEHHHDAsTUxdVmBDmuwE5KEl9U/HHDAAQcccAwloCqL0b5D4+1sl59t9PwfCDjggAMOOOC4Eseq+iM3zW4GeM+g9dwQOtI5WkpUwgEHHHDAAUcZRy7QWz0suwDc/ZNm+wLMyqYDWQH/aIADDjjggAOORhy5I7u4WwTN+CScraFhD47KpsyXTQCDAw444IADjsYXzia7IoHVxGL4M+HX7FeYxZEf7PO8/ME3hAMOOOCAA45GHL9fUglCswvDnTG8Z18psnW196OCAw444IADjrMTQTOB1QnBaT+mSEB60wFTcMABBxxwwNEYevXgyA5OXgdfZ02CWgWY2fetfTyFhf3hgAMOOOCAoxFHVwKnsjFd17VXJbi6Bum81KaIcMABBxxwwHEhlNUknErn0wkhaLZRI/XQ1al2RIgOBxxwwAEHHJv7aCIdSJVAdWdyLDLQaSagviEPOOCAAw444NjsLVsplQ6qnR9DdhL57ReugQMOOOCAA45LeVQ49Uz2rSWOegYJd00uOnxLADjggAMOOOBoDK1u5Li9cnP1sEZ5+82E4IADDjjggOO4Ko0khSYSaDMJpWsa9cX+Q4EDDjjggAOOzcXoeVbsLtPvdff7wwEHHHDAAccr5EJeKuHzBh8tHHDAAQcccIwffwF6foQKJbxXsgAAAABJRU5ErkJggg==">
+
 <title>BLOODLINE</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -14,6 +27,9 @@
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     overscroll-behavior: none; touch-action: manipulation;
     height: 100%;
+    /* no long-press magnifier or selection popup while playing */
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
   }
   #wrap {
     max-width: 520px; margin: 0 auto; padding: 0 0 env(safe-area-inset-bottom);
@@ -146,13 +162,13 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.18
+   BLOODLINE  v2.0.19
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.18";
+const VERSION = "2.0.19";
 
 
 /* ---------------- beeper ----------------
