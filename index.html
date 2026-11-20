@@ -1,10 +1,15 @@
 <!DOCTYPE html>
-<html lang="en">
+<!--
+  BLOODLINE
+  Copyright (c) 2026 Ben Stiff @ Room46.uk. All rights reserved.
+  No copying, rehosting, redistribution or derivative works without permission.
+-->
+<html lang="en" data-build="BL·Ben Stiff @ Room46.uk·2.0.20·2026-11-20·bl20k9">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="app-repo" content="Bloodline">
-<meta name="app-version" content="2.0.19">
+<meta name="app-version" content="2.0.20">
 <meta name="theme-color" content="#000000">
 <meta name="description" content="A ZX Spectrum-style caveman roguelike about learning language. 144 words, six families, one bloodline.">
 <meta name="author" content="S77FFY">
@@ -162,13 +167,32 @@
 <script>
 "use strict";
 /* ------------------------------------------------------------------
-   BLOODLINE  v2.0.19
+   BLOODLINE  v2.0.20
    A ZX Spectrum-style caveman roguelike about learning language
    and keeping a line of blood going long enough to write it down.
    Single file, zero dependencies.
 ------------------------------------------------------------------ */
 
-const VERSION = "2.0.19";
+const VERSION = "2.0.20";
+const CREDIT  = "\u00a9 2026 Ben Stiff @ Room46.uk";
+const BUILD   = "BL\u00b7Ben Stiff @ Room46.uk\u00b72.0.20\u00b72026-11-20\u00b7bl20k9";
+
+/* --- ownership: leave both empty to allow any host --- */
+const LOCK_HOST = "";                 /* e.g. "s77ffy.github.io" */
+const HOME_URL  = "";                 /* e.g. "https://s77ffy.github.io/Bloodline/" */
+function hostAllowed() {
+  if (!LOCK_HOST) return true;
+  try {
+    if (typeof location === "undefined") return true;
+    if (location.protocol === "file:") return true;
+    const h = String(location.hostname || "").toLowerCase();
+    if (!h || h === "localhost" || h === "127.0.0.1" || h === "[::1]") return true;
+    const lock = LOCK_HOST.toLowerCase();
+    return h === lock || h.endsWith("." + lock);
+  } catch (e) { return true; }
+}
+
+const PAINT_TURNS = 10;   /* the walk to the wall is the cost, not the brushwork */
 
 
 /* ---------------- beeper ----------------
@@ -342,7 +366,7 @@ const FONT = {
   "m": "0000685454545400", "n": "0000784444444400", "o": "0000384444443800", "p": "0000784444784040",
   "q": "00003C44443C0406", "r": "00001C2020202000", "s": "0000384038047800", "t": "0010381010100C00",
   "u": "0000444444443800", "v": "0000444428281000", "w": "0000445454542800", "x": "0000442810284400",
-  "y": "00004444443C0438", "z": "00007C0810207C00", "\u00a9": "003C4A56524A3C00"
+  "y": "00004444443C0438", "z": "00007C0810207C00", "\u00a9": "3C4299A199423C00", "@": "3C425A565C403C00"
 };
 const FONTBYTES = {};
 for (const k in FONT) {
@@ -747,6 +771,7 @@ const T = { FLOOR: 0, WALL: 1, POOL: 2, SLAB: 3, HEARTH: 4, KILN: 5, WALLART: 6,
 const MW = 16, MH = 9, TS = 16;
 const GW = 5, GH = 5;
 const BIOMES = ["mouth", "wet", "dry", "chalk", "deep"];
+const BIOMESHORT = { mouth: "MOUTH", wet: "WET", dry: "DRY", chalk: "CHALK", deep: "DEEP" };
 const BIOMENAME = { mouth: "THE MOUTH", wet: "WET CAVE", dry: "DRY CAVE", chalk: "CHALK CAVE", deep: "THE DEEP" };
 const NODES = {
   mouth: ["WOOD", "BARK", "RESIN", "BERRY", "STONE", "FLINT", "WATER"],
@@ -780,7 +805,8 @@ function newState() {
     px: 8, py: 4,
     larder: 12, store: [],
     reveal: [], visited: {}, sleepRun: 0,
-    hearthsBuilt: 0, paintedTotal: 0
+    hearthsBuilt: 0, paintedTotal: 0,
+    lineTurns: 0, lineKids: 0, lineFires: 0
   };
 }
 const NAMES = ["URK", "TAM", "BOSK", "REN", "GULL", "MOTH", "AKK", "SILT", "VARN", "EDDA", "OLM", "TASK", "BRAN", "HULK", "NIX"];
@@ -998,6 +1024,11 @@ function hurt(amount, what) {
 }
 
 function die(why) {
+  if (paintedCount() >= WORDS.length && !S.wonShown) {
+    S.wonShown = true; S.reveal = [];
+    cv.classList.remove("zoom"); wallOpen = null;
+    SFX.fanfare(); mode = "winscene"; render(); return;
+  }
   cv.classList.remove("zoom");
   S.reveal = [];
   SFX.death();
@@ -1026,10 +1057,13 @@ function nextLife() {
   const carried = S.pack.filter(id => !FOODVAL[id]);
   heirlooms.forEach(id => { if (carried.indexOf(id) < 0) carried.push(id); });
   const caves = S.caves, at = S.at, gen = S.gen + 1, painted = S.painted, seen = S.seen;
+  const lineTurns = S.lineTurns + S.turn, lineKids = S.lineKids + S.kids.length,
+        lineFires = S.lineFires + S.hearthsBuilt;
   const kidsLeft = S.kids.filter(k => k.alive && k !== S.heir);
   const bestSoFar = best;
   S = newState();
   S.gen = gen; S.caves = caves; S.at = at; S.painted = painted; S.seen = seen;
+  S.lineTurns = lineTurns; S.lineKids = lineKids; S.lineFires = lineFires;
   S.known = inherited;
   S.pack = [];
   const spill = [];
@@ -1516,7 +1550,8 @@ function render() {
   setKeyLabel("eat", mode === "craft" ? "DROP" : "EAT");
   setKeyLabel("wait", mode === "paint" ? "PAINT" : "WAIT");
   setKeyLabel("make", mode === "paint" ? "PAINT" : (mode === "wall" ? "PAINT" : "MAKE"));
-  if (S && S.reveal && S.reveal.length && mode !== "reveal" && mode !== "death" && mode !== "over") {
+  if (S && S.reveal && S.reveal.length && mode !== "reveal" && mode !== "death" && mode !== "over"
+      && mode !== "winscene" && mode !== "winsum") {
     returnMode = mode;
     mode = "reveal"; revealT0 = 0;
     revealLock = performance.now() + 1400;
@@ -1533,6 +1568,8 @@ function render() {
   else if (mode === "lex") drawLex();
   else if (mode === "home") drawHome();
   else if (mode === "map") drawMap();
+  else if (mode === "winscene") drawWinScene();
+  else if (mode === "winsum") drawWinSum();
   else if (mode === "death") drawDeath();
   else if (mode === "over") drawOver();
   else if (mode === "title") drawTitle();
@@ -1544,10 +1581,10 @@ function pad(s, n) { s = String(s); while (s.length < n) s += " "; return s; }
 function drawPlay() {
   border(BLACK); cls(BLACK);
   const c = cave();
-  tc(0, 0, (pad("AGE " + S.age, 8) + pad("FOOD " + Math.max(0, S.food | 0), 9) +
-            pad("HURT " + Math.max(0, 100 - S.health), 9) + BIOMENAME[c.biome].substr(0, 6)).substr(0, 32), BWHITE);
-  tc(0, 1, (pad("PACK " + kinds() + "/" + packCap(), 9) + pad("KNOW " + knownCount(), 9) +
-            pad("PAINT " + paintedCount(), 9) + "L" + S.larder).substr(0, 32), CYAN);
+  tc(0, 0, (pad("AGE " + S.age, 7) + pad("FOOD " + Math.max(0, S.food | 0), 9) +
+            pad("HURT " + Math.max(0, 100 - S.health), 9) + BIOMESHORT[c.biome]).substr(0, 32), BWHITE);
+  tc(0, 1, (pad("BAG " + kinds() + "/" + packCap(), 10) + pad("KNOW " + knownCount(), 9) +
+            pad("PAINT " + paintedCount(), 10) + "L" + Math.min(99, S.larder)).substr(0, 32), CYAN);
   fill(SX, SY + 16, SW, 1, BLUE);
 
   const oy = SY + 18;
@@ -1568,6 +1605,7 @@ function drawPlay() {
   }
   sprite(SX + S.px * TS, oy + S.py * TS, "man", BYELLOW);
 
+  rawText(Math.round((W - CREDIT.length * 8) / 2), 7, CREDIT, WHITE);
   fill(SX, SY + 18 + MH * TS, SW, 1, BLUE);
   tc(0, 22, msg[0], BWHITE);
   tc(0, 23, msg[1], msg[1].indexOf("NEW WORD") === 0 ? BGREEN : YELLOW);
@@ -1805,7 +1843,7 @@ function drawWall() {
     else { centre(SY + 142, d[0], BWHITE); centre(SY + 156, d[1], YELLOW); }
   }
   if (wallMsg) centre(SY + 172, wallMsg.substr(0, 32), BGREEN);
-  else centre(SY + 172, has("PIGMENT") ? "M PAINTS ALL YOU KNOW" : "M PAINTS - YOU HAVE NO PIGMENT", has("PIGMENT") ? BYELLOW : WHITE);
+  else centre(SY + 172, canPaint() ? "M PAINTS ALL YOU KNOW" : "M PAINTS - FIND PAINT FIRST", canPaint() ? BYELLOW : WHITE);
   centre(SY + 184, "ARROWS READ   SPACE STEPS BACK", CYAN);
   versionStamp(WHITE);
 }
@@ -1826,7 +1864,7 @@ function drawPaint() {
     text(x + 17 - nm.length * 4, y + 33, nm, BWHITE);
   });
   fill(SX + 8, SY + 158, SW - 16, 1, BLUE);
-  centre(SY + 162, list.length + " WORDS, ONE PIGMENT, " + (2 * list.length) + " TURNS", BWHITE);
+  centre(SY + 162, list.length + " WORDS, " + PAINT_TURNS + " TURNS, NO COST", BWHITE);
   centre(SY + 172, "SPACE, M OR TAP PAINTS THEM ALL", BGREEN);
   const pl = pageLabel(paintPick, list.length);
   centre(SY + 183, (pl ? pl + "   " : "") + "L STEPS BACK", CYAN);
@@ -1930,8 +1968,72 @@ function dismissReveal() {
   S.reveal.shift();
   revealT0 = 0;
   if (S.reveal.length) { revealLock = performance.now() + 1400; SFX.word(); requestAnimationFrame(revealFrame); return; }
+  if (paintedCount() >= WORDS.length && !S.wonShown) {
+    S.wonShown = true;
+    cv.classList.remove("zoom");
+    wallOpen = null;
+    SFX.fanfare();
+    mode = "winscene";
+    render();
+    return;
+  }
   mode = returnMode;
   render();
+}
+
+/* ---- the end of it: every mark on the rock ---- */
+function spriteBig(x, y, name, ink, alt, sc) {
+  const sp = SPR[name]; if (!sp) return;
+  for (let r = 0; r < sp.length; r++) for (let c = 0; c < sp[r].length; c++) {
+    const ch = sp[r][c];
+    if (ch === ".") continue;
+    fill(x + c * sc, y + r * sc, sc, sc, ch === "o" ? (alt === undefined ? ink : alt) : ink);
+  }
+}
+function drawWinScene() {
+  border(BLACK); cls(BLACK);
+  for (let i = 0; i < WORDS.length; i++)
+    drawMark(SX + (i % 16) * 16, SY + ((i / 16) | 0) * 16, WORDS[i], BLUE, 1);
+  fill(SX, SY + 150, SW, 42, BLACK);
+  for (let x = 0; x < SW; x += 2) px(SX + x, SY + 150, BLUE);
+  spriteBig(SX + 104, SY + 104, "fire", BRED, BYELLOW, 3);
+  spriteBig(SX + 34, SY + 102, "man", BYELLOW, BYELLOW, 3);
+  if (S.mate) spriteBig(SX + 174, SY + 102, "woman", BMAG, BMAG, 3);
+  const alive = S.kids.filter(k => k.alive);
+  const xs = [66, 100, 134, 168];
+  alive.slice(0, 4).forEach((k, i) => spriteBig(SX + xs[i], SY + 120, "child", BCYAN, BCYAN, 2));
+  fill(SX, SY + 2, SW, 30, BLACK);
+  fill(SX, SY + 2, SW, 1, BRED); fill(SX, SY + 31, SW, 1, BRED);
+  centre(SY + 8, "EVERY MARK IS ON THE ROCK", BWHITE);
+  centre(SY + 20, "AND EVERY ONE HAS A SOUND", BWHITE);
+  fill(SX, SY + 156, SW, 1, BRED);
+  centre(SY + 162, (S.name + " OF GENERATION " + S.gen).substr(0, 32), BYELLOW);
+  centre(SY + 174, WORDS.length + " OF " + WORDS.length + " WORDS", BGREEN);
+  centre(SY + 186, alive.length ? "YOUR CHILDREN KNOW THEM ALL" : "AND THE WALLS WILL KEEP THEM", CYAN);
+  versionStamp(WHITE);
+}
+function drawWinSum() {
+  border(BLACK); cls(BLACK);
+  centre(SY + 14, "THE LINE IS UNBROKEN", BGREEN);
+  fill(SX + 24, SY + 30, SW - 48, 1, BGREEN);
+  spriteBig(SX + 112, SY + 38, "fire", BRED, BYELLOW, 2);
+  const years = Math.round((S.lineTurns + S.turn) / 25);
+  const rows = [
+    ["WORDS", WORDS.length + "/" + WORDS.length],
+    ["GENERATIONS", String(S.gen)],
+    ["CAVES", Object.keys(S.visited).length + "/" + (GW * GH)],
+    ["YEARS LIVED", String(years)],
+    ["CHILDREN", String(S.lineKids + S.kids.length)],
+    ["FIRES LIT", String(S.lineFires + S.hearthsBuilt)]
+  ];
+  rows.forEach((r, i) => {
+    const y = SY + 80 + i * 14;
+    text(SX + 34, y, r[0], CYAN);
+    text(SX + SW - 34 - r[1].length * 8, y, r[1], BWHITE);
+  });
+  fill(SX + 24, SY + 170, SW - 48, 1, BGREEN);
+  centre(SY + 176, "TAP TO BEGIN A NEW LINE", BWHITE);
+  versionStamp(WHITE);
 }
 
 /* ---- death ---- */
@@ -1980,6 +2082,9 @@ function drawOver() {
 function drawTitle() {
   border(BLACK);
   blitTitle(1e9, 1e9);
+  fill(SX, SY + SH - 12, SW, 12, BLACK);
+  rawText(SX + 3, SY + SH - 10, CREDIT, WHITE);
+  versionStamp(WHITE);
   flush();
 }
 
@@ -2062,7 +2167,6 @@ function buildTitle() {
 
   clearBox(36, 166, 168, 24);
   stampText(40, 168, "TAP OR PRESS ANY KEY", 1);
-  stampText(84, 180, "S77FFY  V" + VERSION, 1);
   attrBox(3, 21, 26, 1, BWHITE, BLACK);
   attrBox(3, 22, 26, 2, WHITE, BLACK);
 }
@@ -2242,6 +2346,8 @@ function press(k) {
   if (mode === "load") { tapeStop(); loadT0 = performance.now() - LOAD_END; finishLoad(); return; }
   if (mode === "title") { SFX.select(); newRun(); return; }
   if (mode === "reveal") { dismissReveal(); return; }
+  if (mode === "winscene") { SFX.select(); mode = "winsum"; render(); return; }
+  if (mode === "winsum") { SFX.select(); newRun(); return; }
   if (mode === "over") { SFX.select(); newRun(); return; }
   if (mode === "death") { SFX.select(); nextLife(); return; }
 
@@ -2265,7 +2371,7 @@ function press(k) {
       if (k === "right" || k === "down") { wallSel = (wallSel + 1) % marks.length; SFX.step(); render(); return; }
     }
     if (k === "make") {
-      if (!has("PIGMENT")) { SFX.block(); wallMsg = "YOU HAVE NO PIGMENT TO PAINT WITH"; render(); return; }
+      if (!canPaint()) { SFX.block(); wallMsg = "YOU HAVE NO WORD FOR PAINT YET"; render(); return; }
       if (!paintable().length) { SFX.block(); wallMsg = "EVERY WORD YOU KNOW IS ALREADY HERE"; render(); return; }
       SFX.select(); paintPick = 0; mode = "paint"; render(); return;
     }
@@ -2358,16 +2464,16 @@ function closeWall() {
   mode = "play";
   render();
 }
+function canPaint() { return !!S.known.PIGMENT; }   /* mixed once, mixed for good */
 function doPaintAll() {
   const list = paintable();
   if (!list.length) { SFX.block(); say("NOTHING LEFT TO PAINT.", ""); mode = "wall"; render(); return; }
-  if (!has("PIGMENT")) { SFX.block(); say("NO PIGMENT LEFT.", ""); mode = "wall"; render(); return; }
-  consume("PIGMENT");
+  if (!canPaint()) { SFX.block(); say("YOU HAVE NO WORD FOR PAINT YET.", ""); mode = "wall"; render(); return; }
   list.forEach(id => paintWord(id));
   SFX.craft();
   say("YOU PAINT " + list.length + " WORDS ON THE ROCK.", "THEY WILL OUTLIVE YOU.");
   wallMsg = list.length + " WORDS PAINTED. " + paintedCount() + " IN ALL.";
-  tick(2 * list.length);
+  tick(PAINT_TURNS);
   paintPick = 0;
   if (mode === "paint" || mode === "wall") { mode = "wall"; render(); }
 }
